@@ -1,0 +1,15 @@
+# These individuals or teams have ownership over different parts of the repository.
+# Matching order: last match wins.
+
+# Global ownership
+*   @mewmewmow
+
+# Documentation
+/docs/           @mewmewmow
+*.md             @mewmewmow
+
+# Tests
+/test/           @mewmewmow
+*_test.py        @mewmewmow
+*_test.js        @mewmewmow
+*_test.go        @mewmewmow
