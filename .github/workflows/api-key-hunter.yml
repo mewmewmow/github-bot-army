@@ -1,0 +1,126 @@
+name: 🔑 API Key Hunter
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'  # Every 3 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install requests
+      - name: 🔑 Hunt APIs
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python3 << 'PYTHON'
+          import os, json, requests, smtplib
+          from datetime import datetime
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+
+          def send_email(subject, html):
+              try:
+                  cfg={k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if not all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]): return
+                  msg=MIMEMultipart("alternative")
+                  msg["Subject"]=f"🔑 {subject}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
+                  msg.attach(MIMEText(html,"html"))
+                  with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
+                      s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
+                  print("📧 Email sent!")
+              except Exception as e: print(f"Email error: {e}")
+
+          print("🔑 API Key Hunter — Scanning free AI APIs...")
+
+          PROVIDERS = {
+              "OpenRouter": {"url":"https://openrouter.ai/api/v1/models","signup":"https://openrouter.ai","desc":"100+ models, many free"},
+              "HuggingFace": {"url":"https://huggingface.co/api/models?limit=1","signup":"https://huggingface.co","desc":"Free inference API"},
+              "Together AI": {"url":"https://api.together.xyz/v1/models","signup":"https://api.together.xyz","desc":"$25 free credits"},
+              "Groq": {"url":"https://api.groq.com/openai/v1/models","signup":"https://console.groq.com","desc":"Ultra-fast, free tier"},
+              "DeepSeek": {"url":"https://api.deepseek.com","signup":"https://platform.deepseek.com","desc":"Cheap, near-free"},
+              "Google AI": {"url":"https://generativelanguage.googleapis.com/v1/models","signup":"https://aistudio.google.com","desc":"Gemini free — 60 req/min"},
+              "Mistral": {"url":"https://api.mistral.ai/v1/models","signup":"https://console.mistral.ai","desc":"Free Mistral Small"},
+              "Cerebras": {"url":"https://api.cerebras.ai","signup":"https://inference.cerebras.ai","desc":"Fast free inference"},
+              "SambaNova": {"url":"https://api.sambanova.ai","signup":"https://cloud.sambanova.ai","desc":"Free inference"},
+              "GitHub Models": {"url":"https://models.inference.ai.azure.com","signup":"https://github.com/marketplace?type=models","desc":"GPT-4o, Llama free via GitHub"},
+          }
+
+          working = []
+          broken = []
+
+          for name, p in PROVIDERS.items():
+              try:
+                  r = requests.get(p["url"], timeout=10)
+                  if r.status_code in [200,401,403,404]:
+                      working.append({"name":name, "status":"✅ Reachable", **p})
+                  else:
+                      broken.append({"name":name, "status":f"⚠️ HTTP {r.status_code}", **p})
+              except Exception as e:
+                  broken.append({"name":name, "status":f"❌ {str(e)[:40]}", **p})
+
+          # Check OpenRouter free models
+          free_models = []
+          key = os.environ.get('OPENROUTER_API_KEY','')
+          if key:
+              try:
+                  r = requests.get("https://openrouter.ai/api/v1/models", headers={"Authorization":f"Bearer {key}"}, timeout=15)
+                  if r.status_code == 200:
+                      for m in r.json().get("data",[]):
+                          if float(m.get("pricing",{}).get("prompt","1")) == 0:
+                              free_models.append(m["id"])
+              except: pass
+
+          print(f"\n{'='*50}")
+          print(f"🔑 API HUNTER REPORT")
+          print(f"{'='*50}")
+          print(f"✅ Working: {len(working)}/{len(PROVIDERS)}")
+          print(f"🆓 Free models: {len(free_models)}")
+          for w in working: print(f"  ✅ {w['name']} — {w['desc']}")
+          for b in broken: print(f"  {b['status']} {b['name']}")
+          if free_models:
+              print(f"\n🆓 Free OpenRouter models:")
+              for m in free_models[:15]: print(f"  ✅ {m}")
+
+          # Email report
+          html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
+          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
+          <h1 style="color:#58a6ff">🔑 API Key Hunter Report</h1>
+          <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">
+          <p>✅ <b>{len(working)}</b> APIs reachable | 🆓 <b>{len(free_models)}</b> free models</p>
+          <h2>📡 Provider Status</h2>"""
+          for w in working:
+              html += f'<p>✅ <b>{w["name"]}</b> — {w["desc"]}<br><a href="{w["signup"]}" style="color:#58a6ff">{w["signup"]}</a></p>'
+          for b in broken:
+              html += f'<p>{b["status"]} <b>{b["name"]}</b></p>'
+          if free_models:
+              html += "<h2>🆓 Free Models (OpenRouter)</h2><ul>"
+              for m in free_models[:15]: html += f"<li>{m}</li>"
+              html += "</ul>"
+          html += "</div></body></html>"
+          send_email(f"API Hunter — {len(working)} APIs working, {len(free_models)} free models", html)
+
+          # Save
+          os.makedirs("data", exist_ok=True)
+          with open("data/api_registry.json","w") as f:
+              json.dump({"timestamp":datetime.now().isoformat(),"working":working,"broken":broken,"free_models":free_models},f,indent=2)
+          PYTHON
+      - run: |
+          git config user.name "API Hunter Bot"; git config user.email "bot@github-bot-army.dev"
+          git add data/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "🔑 API scan — $(date +%Y-%m-%d_%H%M)" || true
+          git push || true

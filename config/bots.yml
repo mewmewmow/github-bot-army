@@ -1,0 +1,170 @@
+# GitHub Bot Army — Configuration
+# All secrets go in GitHub Settings → Secrets → Actions
+
+# ============================================
+# REQUIRED SECRETS
+# ============================================
+required:
+  GH_PAT:
+    description: "GitHub Personal Access Token"
+    scopes: "repo, workflow, admin:org, read:packages"
+    get_from: "https://github.com/settings/tokens"
+
+  SMTP_HOST:
+    description: "SMTP server for email notifications"
+    examples:
+      - "smtp.gmail.com"        # Gmail
+      - "smtp.office365.com"    # Outlook
+      - "smtp.mailgun.org"      # Mailgun (free tier)
+      - "smtp.sendgrid.net"     # SendGrid (free tier)
+      - "smtp-relay.brevo.com"  # Brevo/Sendinblue (free tier)
+
+  SMTP_PORT:
+    description: "SMTP port"
+    default: "587"
+    alternatives: ["465", "25"]
+
+  SMTP_USER:
+    description: "SMTP username (usually your email)"
+
+  SMTP_PASS:
+    description: "SMTP password or app password"
+    note: "For Gmail, use App Password: https://myaccount.google.com/apppasswords"
+
+  EMAIL_FROM:
+    description: "Sender email address"
+    example: "bot@yourdomain.com"
+
+  EMAIL_TO:
+    description: "Your email address (where reports go)"
+    example: "you@gmail.com"
+
+# ============================================
+# OPTIONAL SECRETS (Free Communication Channels)
+# ============================================
+optional:
+  TELEGRAM_BOT_TOKEN:
+    description: "Telegram bot token (100% FREE)"
+    how_to_get: |
+      1. Open Telegram → search @BotFather
+      2. Send /newbot
+      3. Copy the token here
+    free: true
+
+  TELEGRAM_CHAT_ID:
+    description: "Your Telegram chat ID (100% FREE)"
+    how_to_get: |
+      1. Start a chat with your bot
+      2. Send any message
+      3. Visit: https://api.telegram.org/bot<TOKEN>/getUpdates
+      4. Find "chat":{"id": NUMBER} — that's your chat ID
+    free: true
+
+  DISCORD_WEBHOOK_URL:
+    description: "Discord webhook URL (100% FREE)"
+    how_to_get: |
+      1. Open Discord → Server Settings → Integrations → Webhooks
+      2. Create webhook → Copy URL
+    free: true
+
+  OPENROUTER_API_KEY:
+    description: "OpenRouter API key for AI features (free tier available)"
+    how_to_get: "https://openrouter.ai"
+    free: true
+
+# ============================================
+# BOT SCHEDULES (24/7 Coverage)
+# ============================================
+schedules:
+  repo-doctor:
+    cron: "0 */4 * * *"      # Every 4 hours
+    description: "Scans & fixes repos"
+
+  security-sentinel:
+    cron: "0 */4 * * *"      # Every 4 hours
+    description: "Security scan"
+
+  api-key-hunter:
+    cron: "0 */3 * * *"      # Every 3 hours
+    description: "Finds free APIs"
+
+  web-scraper:
+    cron: "0 */6 * * *"      # Every 6 hours
+    description: "Scrapes opportunities"
+
+  analytics-bot:
+    cron: "0 8 * * *"        # Daily 8am UTC
+    description: "GitHub analytics"
+
+  update-bot:
+    cron: "0 6 * * *"        # Daily 6am UTC
+    description: "Dependency updates"
+
+  agent-builder:
+    cron: "0 0 * * *"        # Daily midnight UTC
+    description: "Creates AI agents"
+
+  project-generator:
+    cron: "0 0 * * 0"        # Weekly Sunday
+    description: "New projects"
+
+  master-report:
+    cron: "0 9 * * *"        # Daily 9am UTC
+    description: "Consolidated daily report via ALL channels"
+
+  bot-health:
+    cron: "0 12 * * *"       # Daily noon UTC
+    description: "Checks if bots are running"
+
+# ============================================
+# FREE EMAIL SERVICES (no credit card needed)
+# ============================================
+free_email_options:
+  - name: "Gmail App Password"
+    url: "https://myaccount.google.com/apppasswords"
+    limit: "500 emails/day"
+    setup: "Enable 2FA → Generate app password"
+
+  - name: "Brevo (Sendinblue)"
+    url: "https://www.brevo.com"
+    limit: "300 emails/day"
+    setup: "Free account → SMTP relay"
+
+  - name: "Mailgun"
+    url: "https://www.mailgun.com"
+    limit: "100 emails/day (free)"
+    setup: "Free account → SMTP credentials"
+
+  - name: "SendGrid"
+    url: "https://sendgrid.com"
+    limit: "100 emails/day"
+    setup: "Free account → API key or SMTP"
+
+  - name: "Resend"
+    url: "https://resend.com"
+    limit: "100 emails/day"
+    setup: "Free account → SMTP or API"
+
+# ============================================
+# FREE NOTIFICATION CHANNELS
+# ============================================
+free_channels:
+  email:
+    cost: "Free (limited daily sends)"
+    setup: "See free_email_options above"
+
+  telegram:
+    cost: "100% Free, unlimited"
+    setup: "Create bot via @BotFather (2 minutes)"
+
+  discord:
+    cost: "100% Free, unlimited"
+    setup: "Create webhook in server settings (1 minute)"
+
+  github_issues:
+    cost: "100% Free"
+    setup: "Bots auto-create issues for critical alerts"
+
+  github_actions_log:
+    cost: "100% Free"
+    setup: "Always available — check Actions tab"

@@ -1,0 +1,107 @@
+name: 🚀 Deploy Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: 'Repository to deploy (owner/repo)'
+        required: true
+      platform:
+        description: 'Deploy platform'
+        required: false
+        default: 'auto'
+        type: choice
+        options: [auto, vercel, netlify, cloudflare-pages, github-pages]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.repo || github.repository }}
+          token: ${{ secrets.GH_PAT }}
+          path: target
+
+      - name: 🔍 Detect & Deploy
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          cd target
+          echo "🔍 Detecting project type..."
+          TYPE="static"
+          if [ -f "next.config.ts" ] || [ -f "next.config.js" ] || [ -f "next.config.mjs" ]; then TYPE="nextjs"
+          elif [ -f "package.json" ] && grep -q '"react"' package.json; then TYPE="react"
+          elif [ -f "package.json" ] && grep -q '"express"' package.json; then TYPE="node"
+          elif [ -f "requirements.txt" ] || [ -f "pyproject.toml" ]; then TYPE="python"
+          elif [ -f "index.html" ]; then TYPE="static"
+          fi
+          echo "📦 Detected: $TYPE"
+
+          PLATFORM="${{ github.event.inputs.platform }}"
+          if [ "$PLATFORM" = "auto" ]; then
+            case $TYPE in
+              nextjs|react|static) PLATFORM="vercel" ;;
+              node|python) PLATFORM="railway" ;;
+              *) PLATFORM="github-pages" ;;
+            esac
+          fi
+          echo "🚀 Target: $PLATFORM"
+
+          # Generate deploy workflow
+          mkdir -p .github/workflows
+          if [ "$PLATFORM" = "github-pages" ]; then
+            cat > .github/workflows/deploy.yml << 'EOF'
+          name: Deploy
+          on: { push: { branches: [main] } }
+          permissions: { pages: write, id-token: write }
+          jobs:
+            deploy:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/configure-pages@v4
+                - uses: actions/upload-pages-artifact@v3
+                  with: { path: '.' }
+                - uses: actions/deploy-pages@v4
+          EOF
+          fi
+
+          git config user.name "Deploy Bot"
+          git config user.email "bot@github-bot-army.dev"
+          git add .github/workflows/deploy.yml
+          git commit -m "🚀 Add deploy workflow for $PLATFORM" || true
+          git push || true
+
+          # Send notification
+          python3 -c "
+          import os, smtplib
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from datetime import datetime
+          try:
+              cfg={k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+              if all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]):
+                  msg=MIMEMultipart('alternative')
+                  msg['Subject']='🚀 Deploy Bot: Workflow added'
+                  msg['From']=cfg['EMAIL_FROM'] or cfg['SMTP_USER']
+                  msg['To']=cfg['EMAIL_TO']
+                  html=f'<html><body style=\"font-family:sans-serif;padding:20px;background:#0d1117;color:#c9d1d9\"><div style=\"background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px\"><h1 style=\"color:#58a6ff\">🚀 Deploy Bot</h1><p>Deploy workflow added to <b>${{ github.event.inputs.repo }}</b></p><p>Platform: <b>$PLATFORM</b></p><p>Type: <b>$TYPE</b></p><p>Push to main branch to trigger deployment.</p></div></body></html>'
+                  msg.attach(MIMEText(html,'html'))
+                  with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
+                      s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
+                  print('📧 Notification sent')
+          except Exception as e: print(f'Notification error: {e}')
+          "
+          echo "✅ Deploy workflow created for $PLATFORM"

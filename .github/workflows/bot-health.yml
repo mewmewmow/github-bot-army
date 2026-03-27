@@ -1,0 +1,146 @@
+name: ⚙️ Bot Health Monitor
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # Daily at noon UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install PyGithub
+      - name: ⚙️ Check Bot Health
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python3 << 'PYTHON'
+          import os, json, smtplib, urllib.request
+          from datetime import datetime, timedelta
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from github import Github
+
+          def notify(subject, body):
+              # Email
+              try:
+                  cfg = {k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]):
+                      msg = MIMEMultipart("alternative")
+                      msg["Subject"]=f"⚙️ {subject}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
+                      msg.attach(MIMEText(body,"html"))
+                      with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
+                          s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
+                      print("📧 Email sent")
+              except Exception as e: print(f"Email error: {e}")
+              # Telegram
+              try:
+                  t = os.environ.get('TELEGRAM_BOT_TOKEN',''); c = os.environ.get('TELEGRAM_CHAT_ID','')
+                  if t and c:
+                      url = f"https://api.telegram.org/bot{t}/sendMessage"
+                      data = json.dumps({"chat_id":c,"text":f"⚙️ {subject}\n\n{body}","parse_mode":"Markdown"}).encode()
+                      req = urllib.request.Request(url,data=data,headers={"Content-Type":"application/json"})
+                      urllib.request.urlopen(req,timeout=10)
+                      print("📱 Telegram sent")
+              except: pass
+              # Discord
+              try:
+                  wh = os.environ.get('DISCORD_WEBHOOK_URL','')
+                  if wh:
+                      embed = {"embeds":[{"title":f"⚙️ {subject}","description":body[:2000],"color":16776960,"timestamp":datetime.utcnow().isoformat()}]}
+                      data = json.dumps(embed).encode()
+                      req = urllib.request.Request(wh,data=data,headers={"Content-Type":"application/json"})
+                      urllib.request.urlopen(req,timeout=10)
+                      print("💬 Discord sent")
+              except: pass
+
+          g = Github(os.environ['GH_PAT'])
+          user = g.get_user()
+
+          print("⚙️ Bot Health Monitor — Checking all bots...")
+
+          # Check the bot army repo's workflows
+          try:
+              repo = g.get_repo(f"{user.login}/github-bot-army")
+              workflows = list(repo.get_workflows())
+              
+              bot_status = []
+              issues = []
+              
+              for wf in workflows:
+                  runs = list(wf.get_runs()[:3])
+                  if runs:
+                      latest = runs[0]
+                      age = (datetime.now() - latest.created_at.replace(tzinfo=None)).total_seconds() / 3600
+                      
+                      if latest.conclusion == "failure":
+                          status = "❌ FAILED"
+                          issues.append(f"{wf.name} failed at {latest.created_at.strftime('%m/%d %H:%M')}")
+                      elif age > 48:
+                          status = f"⚠️ STALE ({int(age)}h ago)"
+                          issues.append(f"{wf.name} hasn't run in {int(age)} hours")
+                      elif latest.conclusion == "success":
+                          status = "✅ Healthy"
+                      else:
+                          status = f"🔄 {latest.conclusion}"
+                      
+                      bot_status.append(f"{status} — {wf.name} (last: {latest.created_at.strftime('%m/%d %H:%M')})")
+                  else:
+                      bot_status.append(f"⚠️ Never run — {wf.name}")
+
+              # Check secrets are configured
+              try:
+                  secrets = list(repo.get_secrets())
+                  secret_names = [s.name for s in secrets]
+                  required = ['GH_PAT','SMTP_HOST','SMTP_USER','SMTP_PASS','EMAIL_TO']
+                  missing = [s for s in required if s not in secret_names]
+                  if missing:
+                      issues.append(f"Missing secrets: {', '.join(missing)}")
+                  else:
+                      bot_status.append(f"✅ All required secrets configured ({len(secret_names)} total)")
+              except:
+                  bot_status.append("⚠️ Cannot check secrets (permissions)")
+
+              print(f"\n{'='*50}")
+              print(f"⚙️ BOT HEALTH REPORT")
+              print(f"{'='*50}")
+              for s in bot_status: print(f"  {s}")
+              if issues:
+                  print(f"\n⚠️ ISSUES:")
+                  for i in issues: print(f"  🚨 {i}")
+              else:
+                  print(f"\n✅ All bots healthy!")
+
+              # Email if issues
+              if issues:
+                  html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
+                  <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
+                  <h1 style="color:#f0883e">⚙️ Bot Health Alert</h1>
+                  <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">
+                  <h2>🚨 Issues</h2><ul>"""
+                  for i in issues: html += f'<li style="color:#f85149">{i}</li>'
+                  html += f'</ul><h2>📊 All Bots</h2><pre>'
+                  for s in bot_status: html += f'{s}\n'
+                  html += '</pre></div></body></html>'
+                  notify(f"Bot Health Alert — {len(issues)} issues!", html)
+
+          except Exception as e:
+              print(f"❌ Cannot access bot repo: {e}")
+              notify("Bot Health — CRITICAL", f"Cannot access github-bot-army repo: {e}")
+          PYTHON

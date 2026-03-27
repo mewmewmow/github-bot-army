@@ -1,0 +1,152 @@
+name: 🏗️ Scaffold Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: 'Project name'
+        required: true
+      type:
+        description: 'Project type'
+        required: true
+        type: choice
+        options:
+          - nextjs-app
+          - react-app
+          - fastapi-backend
+          - express-api
+          - discord-bot
+          - telegram-bot
+          - full-stack-saas
+          - ai-agent
+      description:
+        description: 'What does this project do?'
+        required: false
+        default: 'A new project'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📦 Install dependencies
+        run: pip install requests PyGithub
+
+      - name: 🏗️ Scaffold Project
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          PROJECT_NAME: ${{ github.event.inputs.name }}
+          PROJECT_TYPE: ${{ github.event.inputs.type }}
+          PROJECT_DESC: ${{ github.event.inputs.description }}
+        run: |
+          python3 << 'PYTHON'
+          import os
+          import json
+          from datetime import datetime
+          from github import Github
+
+          g = Github(os.environ['GH_PAT'])
+          user = g.get_user()
+          name = os.environ['PROJECT_NAME']
+          ptype = os.environ['PROJECT_TYPE']
+          desc = os.environ['PROJECT_DESC']
+
+          print(f"🏗️ Scaffold Bot — Building {ptype}: {name}")
+          print("=" * 60)
+
+          # Scaffold configs per type
+          SCAFFOLDS = {
+              "nextjs-app": {
+                  "files": {
+                      "package.json": json.dumps({
+                          "name": name, "version": "0.1.0", "private": True,
+                          "scripts": {"dev": "next dev", "build": "next build", "start": "next start"},
+                          "dependencies": {"next": "^14.0.0", "react": "^18.0.0", "react-dom": "^18.0.0"},
+                          "devDependencies": {"typescript": "^5.0.0", "@types/react": "^18.0.0"}
+                      }, indent=2),
+                      "tsconfig.json": json.dumps({
+                          "compilerOptions": {"target": "es5", "lib": ["dom", "dom.iterable", "esnext"], "allowJs": True, "skipLibCheck": True, "strict": True, "forceConsistentCasingInFileNames": True, "noEmit": True, "esModuleInterop": True, "module": "esnext", "moduleResolution": "node", "resolveJsonModule": True, "isolatedModules": True, "jsx": "preserve", "incremental": True},
+                          "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+                          "exclude": ["node_modules"]
+                      }, indent=2),
+                      "src/app/page.tsx": 'export default function Home() {\n  return <main><h1>Hello from ' + name + '!</h1></main>;\n}\n',
+                      "src/app/layout.tsx": 'export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return <html><body>{children}</body></html>;\n}\n',
+                      "next.config.ts": 'import type { NextConfig } from "next";\nconst nextConfig: NextConfig = {};\nexport default nextConfig;\n',
+                      ".env.example": "NEXT_PUBLIC_API_URL=\nDATABASE_URL=\n",
+                  },
+                  "topics": ["nextjs", "react", "typescript", "web-app"]
+              },
+              "fastapi-backend": {
+                  "files": {
+                      "main.py": 'from fastapi import FastAPI\nfrom pydantic import BaseModel\n\napp = FastAPI(title="' + name + '")\n\nclass HealthResponse(BaseModel):\n    status: str\n    service: str\n\n@app.get("/", response_model=HealthResponse)\nasync def root():\n    return HealthResponse(status="online", service="' + name + '")\n\n@app.get("/health")\nasync def health():\n    return {"status": "healthy"}\n',
+                      "requirements.txt": "fastapi\nuvicorn\npydantic\npython-dotenv\n",
+                      "Procfile": "web: uvicorn main:app --host 0.0.0.0 --port $PORT\n",
+                      ".env.example": "DATABASE_URL=\nSECRET_KEY=\n",
+                      "Dockerfile": "FROM python:3.12-slim\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install -r requirements.txt\nCOPY . .\nCMD [\"uvicorn\", \"main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]\n"
+                  },
+                  "topics": ["python", "fastapi", "api", "backend"]
+              },
+              "discord-bot": {
+                  "files": {
+                      "bot.py": 'import discord\nfrom discord.ext import commands\nimport os\nfrom dotenv import load_dotenv\n\nload_dotenv()\n\nbot = commands.Bot(command_prefix="!", intents=discord.Intents.all())\n\n@bot.event\nasync def on_ready():\n    print(f"🤖 {bot.user} is online!")\n\n@bot.command()\nasync def ping(ctx):\n    await ctx.send(f"🏓 Pong! Latency: {round(bot.latency * 1000)}ms")\n\nbot.run(os.getenv("DISCORD_TOKEN"))\n',
+                      "requirements.txt": "discord.py\npython-dotenv\n",
+                      ".env.example": "DISCORD_TOKEN=\n"
+                  },
+                  "topics": ["discord", "bot", "python", "chatbot"]
+              },
+              "full-stack-saas": {
+                  "files": {
+                      "frontend/package.json": json.dumps({
+                          "name": f"{name}-frontend", "version": "0.1.0", "private": True,
+                          "scripts": {"dev": "next dev", "build": "next build"},
+                          "dependencies": {"next": "^14.0.0", "react": "^18.0.0", "tailwindcss": "^3.0.0"}
+                      }, indent=2),
+                      "backend/main.py": 'from fastapi import FastAPI\napp = FastAPI()\n\n@app.get("/")\ndef root(): return {"service": "' + name + '"}\n',
+                      "backend/requirements.txt": "fastapi\nuvicorn\nsupabase\n",
+                      ".env.example": "NEXT_PUBLIC_SUPABASE_URL=\nSUPABASE_SERVICE_KEY=\nOPENAI_API_KEY=\nSTRIPE_SECRET_KEY=\n"
+                  },
+                  "topics": ["saas", "fullstack", "nextjs", "fastapi", "supabase"]
+              }
+          }
+
+          scaffold = SCAFFOLDS.get(ptype, SCAFFOLDS["nextjs-app"])
+
+          # Create repo
+          try:
+              repo = user.create_repo(name, description=desc or f"A {ptype} project", auto_init=True, private=False)
+              print(f"✅ Repo created!")
+
+              # Add all scaffold files
+              for filepath, content in scaffold["files"].items():
+                  try:
+                      repo.create_file(filepath, f"feat: scaffold {filepath}", content)
+                      print(f"  ✅ {filepath}")
+                  except Exception as e:
+                      print(f"  ⚠️ {filepath}: {e}")
+
+              # Add README
+              readme = f"# {name}\n\n{desc}\n\n## Setup\n```bash\ngit clone https://github.com/{user.login}/{name}.git\ncd {name}\n# Follow setup instructions\n```\n"
+              try:
+                  repo.create_file("README.md", "docs: initial README", readme)
+              except: pass
+
+              # Add topics
+              repo.replace_topics(scaffold["topics"] + ["automation", "bot-generated"])
+
+              print(f"\n🎉 '{name}' scaffolded!")
+              print(f"🔗 https://github.com/{user.login}/{name}")
+
+          except Exception as e:
+              print(f"❌ Error: {e}")
+          PYTHON

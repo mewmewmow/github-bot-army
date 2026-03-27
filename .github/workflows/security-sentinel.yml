@@ -1,0 +1,117 @@
+name: 🛡️ Security Sentinel
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install PyGithub
+      - name: 🛡️ Security Scan
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python3 << 'PYTHON'
+          import os, re, base64, json, smtplib
+          from datetime import datetime
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from github import Github
+
+          def send_alert(subject, html):
+              try:
+                  cfg = {k: os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if not all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]): return
+                  msg = MIMEMultipart("alternative")
+                  msg["Subject"]=f"🛡️ {subject}"; msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER']; msg["To"]=cfg['EMAIL_TO']
+                  msg.attach(MIMEText(html,"html"))
+                  with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
+                      s.starttls(); s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']); s.send_message(msg)
+                  print("📧 Alert sent!")
+              except Exception as e: print(f"Email error: {e}")
+
+          SECRET_PATTERNS = [
+              (r'ghp_[a-zA-Z0-9]{36}', 'GitHub Token'),
+              (r'sk-[a-zA-Z0-9]{48}', 'OpenAI Key'),
+              (r'sk-or-v1-[a-zA-Z0-9]{64}', 'OpenRouter Key'),
+              (r'AKIA[0-9A-Z]{16}', 'AWS Key'),
+              (r'supabase\.[a-zA-Z0-9]{40}', 'Supabase Key'),
+              (r'-----BEGIN.*PRIVATE KEY-----', 'Private Key'),
+              (r'xoxb-[0-9]+-[a-zA-Z0-9]+', 'Slack Token'),
+          ]
+
+          g = Github(os.environ['GH_PAT'])
+          user = g.get_user()
+          alerts = []
+          scanned = 0
+
+          print("🛡️ Security Sentinel — Scanning...")
+
+          for repo in user.get_repos():
+              if repo.fork: continue
+              scanned += 1
+
+              # Scan for exposed .env files
+              for envf in ['.env','.env.local','.env.production','.env.development']:
+                  try:
+                      content = repo.get_contents(envf)
+                      decoded = base64.b64decode(content.content).decode('utf-8','ignore')
+                      for line in decoded.split('\n'):
+                          line = line.strip()
+                          if '=' in line and not line.startswith('#'):
+                              val = line.split('=',1)[1].strip().strip('"').strip("'")
+                              if val and val not in ['','xxx','changeme','your_key_here','placeholder']:
+                                  for pat, name in SECRET_PATTERNS:
+                                      if re.search(pat, val):
+                                          alerts.append(f"🚨 {repo.name}/{envf}: {name} EXPOSED!")
+                  except: pass
+
+              # Check branch protection
+              try: repo.get_branch('main').get_protection()
+              except:
+                  if not repo.private:
+                      alerts.append(f"⚠️ {repo.name}: No branch protection on main")
+
+          print(f"\n🛡️ SECURITY REPORT")
+          print(f"Scanned: {scanned} repos")
+          print(f"Alerts: {len(alerts)}")
+          for a in alerts: print(f"  {a}")
+          if not alerts: print("  ✅ All clear!")
+
+          # Email if alerts
+          if alerts:
+              html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
+              <h1 style="color:#f85149">🛡️ Security Alert!</h1>
+              <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">"""
+              for a in alerts:
+                  color = "#f85149" if "🚨" in a else "#d29922"
+                  html += f'<p style="color:{color}">{a}</p>'
+              html += "</div></body></html>"
+              send_alert(f"Security Alert — {len(alerts)} issues found!", html)
+
+          os.makedirs("data", exist_ok=True)
+          with open("data/security_report.json","w") as f:
+              json.dump({"timestamp":datetime.now().isoformat(),"scanned":scanned,"alerts":alerts},f,indent=2)
+          PYTHON
+      - run: |
+          git config user.name "Security Bot"; git config user.email "bot@github-bot-army.dev"
+          git add data/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "🛡️ Security scan — $(date +%Y-%m-%d_%H%M)" || true
+          git push || true

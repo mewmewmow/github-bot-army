@@ -1,0 +1,99 @@
+# API Registry — Freemium AI Providers
+# Last updated by API Key Hunter Bot
+
+providers:
+  openrouter:
+    name: "OpenRouter"
+    url: "https://openrouter.ai"
+    signup: "https://openrouter.ai"
+    free_tier: true
+    description: "100+ models, many free. Best for variety."
+    models_free:
+      - "meta-llama/llama-3.1-8b-instruct:free"
+      - "google/gemma-2-9b-it:free"
+      - "mistralai/mistral-7b-instruct:free"
+      - "huggingface/zephyr-7b-beta:free"
+      - "openchat/openchat-7b:free"
+
+  huggingface:
+    name: "HuggingFace Inference"
+    url: "https://huggingface.co"
+    signup: "https://huggingface.co/join"
+    free_tier: true
+    description: "Free inference API for open-source models"
+    rate_limit: "1000 requests/day"
+
+  together:
+    name: "Together AI"
+    url: "https://together.xyz"
+    signup: "https://api.together.xyz"
+    free_tier: true
+    description: "$25 free credits on signup"
+    free_credits: 25
+
+  groq:
+    name: "Groq"
+    url: "https://groq.com"
+    signup: "https://console.groq.com"
+    free_tier: true
+    description: "Ultra-fast LPU inference. Free tier available."
+    speed: "500+ tokens/sec"
+
+  deepseek:
+    name: "DeepSeek"
+    url: "https://deepseek.com"
+    signup: "https://platform.deepseek.com"
+    free_tier: true
+    description: "Cheap API, near-free tier"
+    models:
+      - "deepseek-chat"
+      - "deepseek-coder"
+
+  google_ai:
+    name: "Google AI (Gemini)"
+    url: "https://ai.google.dev"
+    signup: "https://aistudio.google.com"
+    free_tier: true
+    description: "Gemini Pro free tier — 60 req/min"
+    rate_limit: "60 RPM"
+
+  mistral:
+    name: "Mistral AI"
+    url: "https://mistral.ai"
+    signup: "https://console.mistral.ai"
+    free_tier: true
+    description: "Free tier with Mistral Small"
+
+  cerebras:
+    name: "Cerebras"
+    url: "https://cerebras.ai"
+    signup: "https://inference.cerebras.ai"
+    free_tier: true
+    description: "Fast inference, free tier available"
+
+  sambanova:
+    name: "SambaNova"
+    url: "https://sambanova.ai"
+    signup: "https://cloud.sambanova.ai"
+    free_tier: true
+    description: "Free inference API"
+
+  github_models:
+    name: "GitHub Models"
+    url: "https://github.com/marketplace?type=models"
+    signup: "https://github.com/marketplace?type=models"
+    free_tier: true
+    description: "Free AI models via GitHub (GPT-4o, Llama, Mistral, Phi)"
+    models:
+      - "gpt-4o"
+      - "gpt-4o-mini"
+      - "llama-3.1-70b"
+      - "mistral-large"
+      - "phi-3-mini"
+
+# Copilot recommended models (free/freemium)
+copilot_models:
+  - "openrouter/meta-llama/llama-3.1-8b-instruct:free"
+  - "openrouter/google/gemma-2-9b-it:free"
+  - "groq/llama-3.1-70b"
+  - "github/gpt-4o-mini"

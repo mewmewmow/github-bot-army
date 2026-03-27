@@ -1,0 +1,109 @@
+name: 🔄 Update Bot
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily 6am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install requests PyGithub
+      - name: 🔄 Check Updates
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python3 << 'PYTHON'
+          import os, json, base64, requests, smtplib
+          from datetime import datetime
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from github import Github
+
+          def send_email(subj, html):
+              try:
+                  cfg={k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if not all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]): return
+                  msg=MIMEMultipart("alternative")
+                  msg["Subject"]=f"🔄 {subj}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
+                  msg.attach(MIMEText(html,"html"))
+                  with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
+                      s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
+              except: pass
+
+          g = Github(os.environ['GH_PAT'])
+          user = g.get_user()
+
+          print("🔄 Update Bot — Checking dependencies...")
+          all_updates = []
+
+          for repo in user.get_repos():
+              if repo.fork: continue
+              outdated = []
+
+              # Check package.json
+              try:
+                  pkg = json.loads(base64.b64decode(repo.get_contents("package.json").content).decode())
+                  deps = {**pkg.get("dependencies",{}), **pkg.get("devDependencies",{})}
+                  for dep, ver in list(deps.items())[:15]:
+                      try:
+                          r = requests.get(f"https://registry.npmjs.org/{dep}/latest", timeout=5)
+                          if r.status_code == 200:
+                              latest = r.json().get("version","")
+                              current = ver.replace("^","").replace("~","").replace(">=","")
+                              if latest and latest != current:
+                                  outdated.append(f"{dep}: {current} → {latest}")
+                      except: pass
+              except: pass
+
+              # Check requirements.txt
+              try:
+                  reqs = base64.b64decode(repo.get_contents("requirements.txt").content).decode().strip().split('\n')
+                  if reqs and reqs[0]:
+                      outdated.append(f"Python: {len(reqs)} deps — review recommended")
+              except: pass
+
+              if outdated:
+                  all_updates.append({"repo":repo.name, "items":outdated[:5], "url":repo.html_url})
+
+          print(f"\n📊 Found outdated deps in {len(all_updates)} repos")
+          for u in all_updates:
+              print(f"\n📦 {u['repo']}:")
+              for i in u['items']: print(f"  ⚠️ {i}")
+
+          if all_updates:
+              html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
+              <h1 style="color:#58a6ff">🔄 Dependency Update Report</h1>
+              <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">
+              <p>📦 <b>{len(all_updates)}</b> repos have outdated dependencies</p>"""
+              for u in all_updates:
+                  html += f'<h3><a href="{u["url"]}" style="color:#58a6ff">{u["repo"]}</a></h3><ul>'
+                  for i in u['items']: html += f"<li>⚠️ {i}</li>"
+                  html += "</ul>"
+              html += "</div></body></html>"
+              send_email(f"Updates available in {len(all_updates)} repos", html)
+
+          os.makedirs("data", exist_ok=True)
+          with open("data/updates.json","w") as f:
+              json.dump({"timestamp":datetime.now().isoformat(),"updates":all_updates},f,indent=2)
+          PYTHON
+      - run: |
+          git config user.name "Update Bot"; git config user.email "bot@github-bot-army.dev"
+          git add data/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "🔄 Update check — $(date +%Y-%m-%d)" || true
+          git push || true

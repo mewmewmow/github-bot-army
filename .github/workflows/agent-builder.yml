@@ -1,0 +1,245 @@
+name: 🧬 Agent Builder
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+  workflow_dispatch:
+    inputs:
+      description:
+        description: 'What kind of agent to build?'
+        required: false
+        default: 'auto'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📦 Install dependencies
+        run: pip install requests
+
+      - name: 🧬 Build AI Agent
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python3 << 'PYTHON'
+          import os
+          import json
+          import subprocess
+          from datetime import datetime
+
+          print("🧬 Agent Builder — Creating AI agent projects...")
+          print("=" * 60)
+
+          # Agent templates
+          AGENT_TEMPLATES = {
+              "discord-bot": {
+                  "name": "Discord AI Bot",
+                  "description": "AI-powered Discord bot with chat, moderation, and fun commands",
+                  "tech": ["discord.py", "openai", "python"],
+                  "files": {
+                      "bot.py": '''import discord
+          from discord.ext import commands
+          import os
+
+          bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
+
+          @bot.event
+          async def on_ready():
+              print(f"🤖 {bot.user} is online!")
+
+          @bot.command()
+          async def chat(ctx, *, message):
+              await ctx.send(f"You said: {message}")
+
+          bot.run(os.getenv("DISCORD_TOKEN"))
+          ''',
+                      "requirements.txt": "discord.py\nopenai\npython-dotenv\n",
+                      ".env.example": "DISCORD_TOKEN=\nOPENAI_API_KEY=\n"
+                  }
+              },
+              "telegram-bot": {
+                  "name": "Telegram AI Bot",
+                  "description": "AI assistant on Telegram with memory and tools",
+                  "tech": ["python-telegram-bot", "openai", "python"],
+                  "files": {
+                      "bot.py": '''import os
+          from telegram import Update
+          from telegram.ext import Application, CommandHandler, MessageHandler, filters
+
+          async def start(update: Update, context):
+              await update.message.reply_text("🤖 Hello! I'm your AI assistant.")
+
+          async def chat(update: Update, context):
+              await update.message.reply_text(f"You said: {update.message.text}")
+
+          app = Application.builder().token(os.getenv("TELEGRAM_TOKEN")).build()
+          app.add_handler(CommandHandler("start", start))
+          app.add_handler(MessageHandler(filters.TEXT, chat))
+          app.run_polling()
+          ''',
+                      "requirements.txt": "python-telegram-bot\nopenai\n",
+                      ".env.example": "TELEGRAM_TOKEN=\nOPENAI_API_KEY=\n"
+                  }
+              },
+              "api-service": {
+                  "name": "AI API Service",
+                  "description": "FastAPI service with AI endpoints",
+                  "tech": ["fastapi", "openai", "python"],
+                  "files": {
+                      "main.py": '''from fastapi import FastAPI
+          from pydantic import BaseModel
+          import os
+
+          app = FastAPI(title="AI API Service")
+
+          class ChatRequest(BaseModel):
+              message: str
+
+          @app.get("/")
+          async def root():
+              return {"status": "online", "service": "AI API"}
+
+          @app.post("/chat")
+          async def chat(req: ChatRequest):
+              return {"response": f"Echo: {req.message}"}
+          ''',
+                      "requirements.txt": "fastapi\nuvicorn\nopenai\n",
+                      "Procfile": "web: uvicorn main:app --host 0.0.0.0 --port $PORT\n"
+                  }
+              },
+              "github-app": {
+                  "name": "GitHub App Bot",
+                  "description": "GitHub App that auto-reviews PRs and triages issues",
+                  "tech": ["probot", "nodejs", "javascript"],
+                  "files": {
+                      "index.js": '''module.exports = (app) => {
+            app.on("issues.opened", async (context) => {
+              const issueComment = context.issue({
+                body: "👋 Thanks for opening this issue! I'll look into it.",
+              });
+              await context.octokit.issues.createComment(issueComment);
+            });
+
+            app.on("pull_request.opened", async (context) => {
+              const prComment = context.issue({
+                body: "🚀 PR received! Running automated review...",
+              });
+              await context.octokit.issues.createComment(prComment);
+            });
+          };
+          ''',
+                      "package.json": json.dumps({
+                          "name": "github-ai-bot",
+                          "version": "1.0.0",
+                          "scripts": {"start": "probot run ./index.js"},
+                          "dependencies": {"probot": "^12.0.0"}
+                      }, indent=2)
+                  }
+              },
+              "web-scraper-agent": {
+                  "name": "Web Scraper Agent",
+                  "description": "Autonomous web scraping agent with scheduling",
+                  "tech": ["python", "beautifulsoup4", "selenium"],
+                  "files": {
+                      "scraper.py": '''import requests
+          from bs4 import BeautifulSoup
+          import json
+          import schedule
+          import time
+
+          def scrape(url):
+              resp = requests.get(url)
+              soup = BeautifulSoup(resp.text, 'html.parser')
+              return {
+                  "title": soup.title.string if soup.title else "",
+                  "links": [a.get("href") for a in soup.find_all("a")[:10]],
+                  "text": soup.get_text()[:500]
+              }
+
+          def job():
+              result = scrape("https://news.ycombinator.com")
+              with open("data.json", "w") as f:
+                  json.dump(result, f)
+              print(f"Scraped: {result['title']}")
+
+          schedule.every(1).hours.do(job)
+          while True:
+              schedule.run_pending()
+              time.sleep(60)
+          ''',
+                      "requirements.txt": "requests\nbeautifulsoup4\nschedule\n"
+                  }
+              }
+          }
+
+          # Create a new agent repo
+          from github import Github
+          g = Github(os.environ['GH_PAT'])
+          user = g.get_user()
+
+          agent_type = os.environ.get('INPUT_DESCRIPTION', 'auto')
+
+          if agent_type == 'auto':
+              # Rotate through templates
+              existing = [r.name for r in user.get_repos()]
+              for key in AGENT_TEMPLATES:
+                  repo_name = f"agent-{key}"
+                  if repo_name not in existing:
+                      agent_type = key
+                      break
+              else:
+                  agent_type = list(AGENT_TEMPLATES.keys())[0]
+
+          if agent_type in AGENT_TEMPLATES:
+              template = AGENT_TEMPLATES[agent_type]
+              repo_name = f"agent-{agent_type}"
+
+              print(f"\n🧬 Building: {template['name']}")
+              print(f"   Repo: {repo_name}")
+              print(f"   Tech: {', '.join(template['tech'])}")
+
+              # Create repo
+              try:
+                  repo = user.create_repo(
+                      repo_name,
+                      description=template['description'],
+                      auto_init=True,
+                      private=False
+                  )
+                  print(f"   ✅ Repo created!")
+
+                  # Add files
+                  for filename, content in template['files'].items():
+                      try:
+                          repo.create_file(
+                              filename,
+                              f"feat: add {filename}",
+                              content,
+                              branch="main"
+                          )
+                          print(f"   ✅ Added {filename}")
+                      except:
+                          pass
+
+                  # Add topics
+                  repo.replace_topics(template['tech'] + ['ai-agent', 'automation', 'bot'])
+
+                  print(f"\n🎉 Agent '{repo_name}' deployed!")
+              except Exception as e:
+                  print(f"   ❌ Error: {e}")
+          else:
+              print(f"❌ Unknown agent type: {agent_type}")
+          PYTHON

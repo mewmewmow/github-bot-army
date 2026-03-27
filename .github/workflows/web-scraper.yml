@@ -1,0 +1,101 @@
+name: 🕷️ Web Scraper
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install requests beautifulsoup4
+      - name: 🕷️ Scrape
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python3 << 'PYTHON'
+          import os, json, requests, smtplib
+          from datetime import datetime
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+
+          def send_email(subj, html):
+              try:
+                  cfg={k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if not all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]): return
+                  msg=MIMEMultipart("alternative")
+                  msg["Subject"]=f"🕷️ {subj}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
+                  msg.attach(MIMEText(html,"html"))
+                  with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
+                      s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
+              except Exception as e: print(f"Email error: {e}")
+
+          print("🕷️ Web Scraper — Scanning for opportunities...")
+
+          results = {"trending":[],"news":[],"opportunities":[]}
+
+          # GitHub Trending (via search)
+          try:
+              r = requests.get("https://api.github.com/search/repositories?q=created:>2026-01-01+stars:>50&sort=stars&order=desc&per_page=10",headers={"Accept":"application/vnd.github.v3+json"},timeout=15)
+              if r.status_code==200:
+                  for repo in r.json().get("items",[]):
+                      results["trending"].append({"name":repo["full_name"],"stars":repo["stargazers_count"],"desc":repo.get("description",""),"url":repo["html_url"]})
+          except: pass
+
+          # HackerNews
+          try:
+              ids = requests.get("https://hacker-news.firebaseio.com/v0/topstories.json",timeout=10).json()[:10]
+              for sid in ids:
+                  s = requests.get(f"https://hacker-news.firebaseio.com/v0/item/{sid}.json",timeout=5).json()
+                  if s and "title" in s:
+                      results["news"].append({"title":s["title"],"url":s.get("url",f"https://news.ycombinator.com/item?id={sid}"),"score":s.get("score",0)})
+          except: pass
+
+          # Help wanted issues
+          try:
+              r = requests.get("https://api.github.com/search/issues?q=label:help-wanted+state:open+created:>2026-03-01&sort=created&order=desc&per_page=5",headers={"Accept":"application/vnd.github.v3+json"},timeout=15)
+              if r.status_code==200:
+                  for issue in r.json().get("items",[]):
+                      results["opportunities"].append({"title":issue["title"],"url":issue["html_url"],"repo":issue["repository_url"].split("repos/")[-1]})
+          except: pass
+
+          print(f"📈 Trending: {len(results['trending'])} | 📰 News: {len(results['news'])} | 🎯 Opportunities: {len(results['opportunities'])}")
+
+          # Email weekly (not every run)
+          hour = datetime.now().hour
+          if hour in [0,6,12,18]:  # 4x daily email
+              html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
+              <h1 style="color:#58a6ff">🕷️ Web Scraper Report</h1>
+              <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">
+              <h2>📈 Trending Repos</h2><ul>"""
+              for t in results["trending"][:5]:
+                  html += f'<li>⭐ {t["stars"]} — <a href="{t["url"]}" style="color:#58a6ff">{t["name"]}</a>: {t["desc"][:80]}</li>'
+              html += "</ul><h2>📰 Tech News</h2><ul>"
+              for n in results["news"][:5]:
+                  html += f'<li><a href="{n["url"]}" style="color:#58a6ff">{n["title"]}</a> ({n["score"]} pts)</li>'
+              html += "</ul></div></body></html>"
+              send_email(f"Scraped {len(results['trending'])} trending repos, {len(results['news'])} news", html)
+
+          os.makedirs("data", exist_ok=True)
+          with open("data/scraper.json","w") as f:
+              json.dump({"timestamp":datetime.now().isoformat(),**results},f,indent=2)
+          PYTHON
+      - run: |
+          git config user.name "Scraper Bot"; git config user.email "bot@github-bot-army.dev"
+          git add data/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "🕷️ Scrape — $(date +%Y-%m-%d_%H%M)" || true
+          git push || true

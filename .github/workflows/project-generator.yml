@@ -1,0 +1,168 @@
+name: 📦 Project Generator
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+  workflow_dispatch:
+    inputs:
+      idea:
+        description: 'Project idea to generate'
+        required: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📦 Install dependencies
+        run: pip install requests PyGithub
+
+      - name: 📦 Generate Project
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          IDEA: ${{ github.event.inputs.idea }}
+        run: |
+          python3 << 'PYTHON'
+          import os
+          import json
+          from datetime import datetime
+          from github import Github
+
+          g = Github(os.environ['GH_PAT'])
+          user = g.get_user()
+          idea = os.environ.get('INPUT_IDEA', '')
+
+          print("📦 Project Generator — Creating new projects...")
+          print("=" * 60)
+
+          # Project templates based on trending ideas
+          PROJECT_IDEAS = [
+              {
+                  "name": "ai-resume-builder",
+                  "description": "AI-powered resume builder with ATS optimization",
+                  "tech": ["nextjs", "openai", "tailwind", "typescript"],
+                  "features": ["AI content generation", "ATS score checker", "PDF export", "Multiple templates"]
+              },
+              {
+                  "name": "expense-tracker-ai",
+                  "description": "Smart expense tracker with AI categorization",
+                  "tech": ["react", "nodejs", "mongodb", "openai"],
+                  "features": ["Auto-categorize receipts", "Spending insights", "Budget alerts", "Export reports"]
+              },
+              {
+                  "name": "ai-code-reviewer",
+                  "description": "Automated code review bot for GitHub",
+                  "tech": ["python", "fastapi", "openai", "github-api"],
+                  "features": ["PR analysis", "Security scanning", "Performance tips", "Style suggestions"]
+              },
+              {
+                  "name": "social-media-scheduler",
+                  "description": "Schedule posts across platforms with AI optimization",
+                  "tech": ["nextjs", "python", "redis", "ai"],
+                  "features": ["Multi-platform posting", "Best time suggestions", "Content generation", "Analytics"]
+              },
+              {
+                  "name": "ai-meeting-notes",
+                  "description": "AI-powered meeting transcription and summarization",
+                  "tech": ["python", "whisper", "openai", "fastapi"],
+                  "features": ["Audio transcription", "Key points extraction", "Action items", "Shareable summaries"]
+              },
+              {
+                  "name": "freelancer-dashboard",
+                  "description": "All-in-one dashboard for freelancers",
+                  "tech": ["nextjs", "supabase", "stripe", "tailwind"],
+                  "features": ["Invoice generator", "Time tracking", "Client management", "Payment processing"]
+              },
+              {
+                  "name": "ai-language-tutor",
+                  "description": "AI language learning companion",
+                  "tech": ["react-native", "openai", "speech-api"],
+                  "features": ["Conversation practice", "Grammar correction", "Vocabulary builder", "Progress tracking"]
+              },
+              {
+                  "name": "dev-portfolio-generator",
+                  "description": "Auto-generate portfolio from GitHub profile",
+                  "tech": ["nextjs", "github-api", "tailwind"],
+                  "features": ["Auto-sync repos", "Contribution graph", "Skills showcase", "Blog integration"]
+              }
+          ]
+
+          # Select or use provided idea
+          if idea:
+              project = {"name": idea.lower().replace(' ', '-'), "description": idea, "tech": ["nextjs", "python"], "features": ["AI-powered", "Auto-deploy"]}
+          else:
+              # Pick one not yet created
+              existing = [r.name for r in user.get_repos()]
+              project = None
+              for p in PROJECT_IDEAS:
+                  if p["name"] not in existing:
+                      project = p
+                      break
+              if not project:
+                  project = PROJECT_IDEAS[0]
+
+          print(f"\n🚀 Generating: {project['name']}")
+          print(f"📝 Description: {project['description']}")
+          print(f"💻 Tech: {', '.join(project['tech'])}")
+
+          # Create repo
+          try:
+              repo = user.create_repo(
+                  project["name"],
+                  description=project["description"],
+                  auto_init=True,
+                  private=False
+              )
+              print("✅ Repo created!")
+
+              # Create comprehensive README
+              readme = f"""# {project['name'].replace('-', ' ').title()}
+
+{project['description']}
+
+## 🚀 Features
+{chr(10).join(f'- {f}' for f in project['features'])}
+
+## 💻 Tech Stack
+{chr(10).join(f'- {t}' for t in project['tech'])}
+
+## 🏗️ Setup
+```bash
+git clone https://github.com/{user.login}/{project['name']}.git
+cd {project['name']}
+npm install
+npm run dev
+```
+
+## 📜 License
+MIT
+"""
+              repo.create_file("README.md", "docs: initial README", readme)
+              repo.create_file("LICENSE", "chore: add MIT license", 
+                  f"MIT License\n\nCopyright (c) {datetime.now().year} {user.login}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy...")
+              repo.create_file(".gitignore", "chore: add gitignore",
+                  "node_modules/\n.next/\n.env*\n!.env.example\ndist/\nbuild/\n.DS_Store\n")
+              repo.create_file(".env.example", "chore: add env example",
+                  "# Add your environment variables here\nOPENAI_API_KEY=\nDATABASE_URL=\n")
+              
+              # Add topics
+              repo.replace_topics(project['tech'] + ['ai', 'automation', 'saas'])
+
+              print(f"✅ Project '{project['name']}' generated!")
+              print(f"🔗 https://github.com/{user.login}/{project['name']}")
+
+          except Exception as e:
+              print(f"❌ Error: {e}")
+          PYTHON
