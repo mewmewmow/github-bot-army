@@ -1,0 +1,222 @@
+name: 🎨 Creative Bot
+
+on:
+  schedule:
+    - cron: '0 6 * * 5'  # Weekly Friday 6am UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install PyGithub
+
+      - name: 🎨 Create & Deploy
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python3 << 'PYTHON'
+          import os, json, smtplib, urllib.request, traceback
+          from datetime import datetime
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from github import Github
+
+          def notify_all(subject, html):
+              # Email
+              try:
+                  cfg={k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]):
+                      msg=MIMEMultipart("alternative");msg["Subject"]=f"🎨 {subject}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
+                      msg.attach(MIMEText(html,"html"))
+                      with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
+              except: pass
+              # Telegram
+              try:
+                  t=os.environ.get('TELEGRAM_BOT_TOKEN','');c=os.environ.get('TELEGRAM_CHAT_ID','')
+                  if t and c:
+                      data=json.dumps({"chat_id":c,"text":f"🎨 {subject}\n\nCheck email for live links!","parse_mode":"Markdown"}).encode()
+                      req=urllib.request.Request(f"https://api.telegram.org/bot{t}/sendMessage",data=data,headers={"Content-Type":"application/json"})
+                      urllib.request.urlopen(req,timeout=10)
+              except: pass
+              # Discord
+              try:
+                  wh=os.environ.get('DISCORD_WEBHOOK_URL','')
+                  if wh:
+                      embed={"embeds":[{"title":f"🎨 {subject}","description":"New creation deployed!","color":10181046,"timestamp":datetime.utcnow().isoformat()}]}
+                      urllib.request.urlopen(urllib.request.Request(wh,data=json.dumps(embed).encode(),headers={"Content-Type":"application/json"}),timeout=10)
+              except: pass
+
+          TOOLS = [
+              {
+                  "name": "color-palette-generator",
+                  "desc": "Generate beautiful color palettes for your projects",
+                  "html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Color Palette Generator</title>
+          <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#111;color:#fff;min-height:100vh;padding:40px 20px}h1{text-align:center;margin-bottom:30px;font-size:2rem}
+          .palette{display:flex;max-width:900px;margin:0 auto 30px;height:200px;border-radius:16px;overflow:hidden;cursor:pointer}.color{flex:1;display:flex;align-items:flex-end;justify-content:center;padding-bottom:15px;font-size:0.85rem;font-weight:600;transition:transform .2s}
+          .color:hover{transform:scaleY(1.05)}.btn{display:block;margin:0 auto;background:#fff;color:#111;border:none;padding:12px 30px;border-radius:8px;font-size:1rem;cursor:pointer}
+          .btn:hover{background:#ddd}.copied{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#22c55e;color:#fff;padding:10px 20px;border-radius:8px;display:none}</style></head>
+          <body><h1>🎨 Color Palette Generator</h1><div class="palette" id="palette"></div><button class="btn" onclick="generate()">Generate New Palette</button><div class="copied" id="copied">Copied!</div>
+          <script>const P=document.getElementById('palette');function r(){return Math.floor(Math.random()*256)}
+          function h(r,g,b){return'#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('')}
+          function generate(){P.innerHTML='';for(let i=0;i<5;i++){const c=h(r(),r(),r());const d=document.createElement('div');d.className='color';d.style.background=c;d.textContent=c;d.style.color=parseInt(c.slice(1),16)>0x888888?'#000':'#fff';
+          d.onclick=()=>{navigator.clipboard.writeText(c);document.getElementById('copied').style.display='block';setTimeout(()=>document.getElementById('copied').style.display='none',1500)};P.appendChild(d)}}
+          generate()</script></body></html>'''
+              },
+              {
+                  "name": "markdown-editor",
+                  "desc": "Live markdown editor with preview",
+                  "html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Markdown Editor</title>
+          <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#0d1117;color:#c9d1d9;height:100vh;display:flex;flex-direction:column}
+          header{background:#161b22;padding:15px 20px;border-bottom:1px solid #30363d;display:flex;justify-content:space-between;align-items:center}
+          header h1{font-size:1.2rem}header button{background:#238636;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer}
+          .editor{display:flex;flex:1}textarea{flex:1;background:#0d1117;color:#c9d1d9;border:none;border-right:1px solid #30363d;padding:20px;font-family:monospace;font-size:14px;resize:none}
+          .preview{flex:1;padding:20px;overflow-y:auto;line-height:1.6}.preview h1{color:#58a6ff;border-bottom:1px solid #30363d;padding-bottom:10px}
+          .preview h2{color:#58a6ff}.preview code{background:#161b22;padding:2px 6px;border-radius:4px}.preview pre{background:#161b22;padding:15px;border-radius:8px;overflow-x:auto}
+          .preview a{color:#58a6ff}.preview blockquote{border-left:3px solid #30363d;padding-left:15px;color:#8b949e}</style></head>
+          <body><header><h1>📝 Markdown Editor</h1><button onclick="download()">⬇ Download .md</button></header>
+          <div class="editor"><textarea id="md" placeholder="Write markdown here..." oninput="render()"># Hello World\n\nThis is a **live** markdown editor.\n\n## Features\n\n- Real-time preview\n- Download as .md\n- Dark theme\n\n```js\nconsole.log("Hello!");\n```\n\n> Quote example</textarea>
+          <div class="preview" id="preview"></div></div>
+          <script>function render(){let t=document.getElementById('md').value;t=t.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>')
+          .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\*(.+?)\*/g,'<i>$1</i>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/```[\s\S]*?```/g,m=>'<pre>'+m.slice(3,-3)+'</pre>')
+          .replace(/^> (.+)$/gm,'<blockquote>$1</blockquote>').replace(/^- (.+)$/gm,'<li>$1</li>').replace(/\n/g,'<br>');document.getElementById('preview').innerHTML=t}
+          function download(){const b=new Blob([document.getElementById('md').value],{type:'text/markdown'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='document.md';a.click()}
+          render()</script></body></html>'''
+              },
+              {
+                  "name": "json-formatter",
+                  "desc": "JSON formatter, validator & minifier tool",
+                  "html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>JSON Tools</title>
+          <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:#0d1117;color:#c9d1d9;padding:30px 20px}
+          h1{text-align:center;margin-bottom:20px;color:#58a6ff}.tools{max-width:900px;margin:0 auto}
+          .btns{display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap}
+          .btn{background:#21262d;color:#c9d1d9;border:1px solid #30363d;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:0.9rem}
+          .btn:hover{background:#30363d}.btn.primary{background:#238636;color:#fff;border-color:#238636}
+          textarea{width:100%;height:350px;background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:8px;padding:15px;font-family:monospace;font-size:13px;resize:vertical}
+          .error{color:#f85149;margin-top:10px}.success{color:#3fb950;margin-top:10px}</style></head>
+          <body><div class="tools"><h1>🔧 JSON Tools</h1><div class="btns">
+          <button class="btn primary" onclick="fmt()">Format</button><button class="btn" onclick="mini()">Minify</button>
+          <button class="btn" onclick="valid()">Validate</button><button class="btn" onclick="copy()">Copy</button>
+          <button class="btn" onclick="clear()">Clear</button></div>
+          <textarea id="j" placeholder='Paste JSON here...'>{"name":"Bot Army","version":"1.0","bots":12,"active":true}</textarea>
+          <div id="msg"></div></div>
+          <script>const $=id=>document.getElementById(id);const m=(t,c)=>{$('msg').innerHTML=`<p class="${c}">${t}</p>`}
+          function fmt(){try{$('j').value=JSON.stringify(JSON.parse($('j').value),null,2);m('✅ Formatted!','success')}catch(e){m('❌ '+e.message,'error')}}
+          function mini(){try{$('j').value=JSON.stringify(JSON.parse($('j').value));m('✅ Minified!','success')}catch(e){m('❌ '+e.message,'error')}}
+          function valid(){try{JSON.parse($('j').value);m('✅ Valid JSON!','success')}catch(e){m('❌ '+e.message,'error')}}
+          function copy(){navigator.clipboard.writeText($('j').value);m('📋 Copied!','success')}
+          function clear(){$('j').value='';m('','')}</script></body></html>'''
+              },
+              {
+                  "name": "password-generator",
+                  "desc": "Secure password generator with strength meter",
+                  "html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Password Generator</title>
+          <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:linear-gradient(135deg,#0d1117,#161b22);color:#c9d1d9;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+          .card{background:#161b22;border:1px solid #30363d;border-radius:16px;padding:40px;max-width:450px;width:100%}h1{text-align:center;margin-bottom:25px;color:#58a6ff}
+          .output{background:#0d1117;padding:15px 20px;border-radius:8px;font-family:monospace;font-size:1.2rem;word-break:break-all;margin-bottom:15px;min-height:50px;display:flex;align-items:center;justify-content:space-between}
+          .output span{flex:1}.copy-btn{background:none;border:none;color:#58a6ff;cursor:pointer;font-size:1.2rem}
+          .strength{height:6px;border-radius:3px;margin-bottom:20px;background:#21262d;overflow:hidden}.strength-bar{height:100%;transition:width .3s,background .3s}
+          label{display:block;margin-bottom:12px;cursor:pointer}input[type=range]{width:100%;margin:5px 0 15px}
+          .btn{width:100%;background:#238636;color:#fff;border:none;padding:12px;border-radius:8px;font-size:1rem;cursor:pointer}
+          .btn:hover{background:#2ea043}.checks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px}</style></head>
+          <body><div class="card"><h1>🔐 Password Generator</h1>
+          <div class="output"><span id="pw">Click Generate</span><button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('pw').textContent)">📋</button></div>
+          <div class="strength"><div class="strength-bar" id="bar"></div></div>
+          <label>Length: <b id="len">16</b></label><input type="range" id="slider" min="8" max="64" value="16" oninput="document.getElementById('len').textContent=this.value">
+          <div class="checks"><label><input type="checkbox" id="upper" checked> Uppercase</label><label><input type="checkbox" id="lower" checked> Lowercase</label>
+          <label><input type="checkbox" id="nums" checked> Numbers</label><label><input type="checkbox" id="syms" checked> Symbols</label></div>
+          <button class="btn" onclick="gen()">🎲 Generate</button></div>
+          <script>function gen(){let c='';if($('upper').checked)c+='ABCDEFGHIJKLMNOPQRSTUVWXYZ';if($('lower').checked)c+='abcdefghijklmnopqrstuvwxyz'
+          if($('nums').checked)c+='0123456789';if($('syms').checked)c+='!@#$%^&*()_+-=';if(!c)c='abcdefghijklmnopqrstuvwxyz';
+          const l=+$('slider').value;let p='';for(let i=0;i<l;i++)p+=c[Math.floor(Math.random()*c.length)];
+          $('pw').textContent=p;const s=Math.min(100,(l*2)+(c.length/2));$('bar').style.width=s+'%';$('bar').style.background=s>70?'#22c55e':s>40?'#eab308':'#ef4444'}
+          function $(id){return document.getElementById(id)}gen()</script></body></html>'''
+              },
+              {
+                  "name": "countdown-timer",
+                  "desc": "Beautiful countdown timer for events",
+                  "html": '''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Countdown Timer</title>
+          <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:20px}
+          h1{font-size:2.5rem;margin-bottom:10px;text-shadow:0 2px 10px rgba(0,0,0,0.3)}p{opacity:0.8;margin-bottom:30px}
+          .timer{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}.unit{background:rgba(255,255,255,0.15);backdrop-filter:blur(10px);border-radius:16px;padding:25px 30px;text-align:center;min-width:100px}
+          .unit .num{font-size:3rem;font-weight:bold}.unit .label{font-size:0.85rem;opacity:0.8;text-transform:uppercase;letter-spacing:2px}
+          .set{margin-top:30px;background:rgba(255,255,255,0.1);padding:20px;border-radius:12px;text-align:center}
+          input{background:rgba(255,255,255,0.2);border:none;color:#fff;padding:10px 15px;border-radius:6px;font-size:1rem;margin:5px}
+          button{background:#fff;color:#764ba2;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:bold}</style></head>
+          <body><h1>⏰ Countdown</h1><p>Time until your event</p>
+          <div class="timer"><div class="unit"><div class="num" id="d">00</div><div class="label">Days</div></div><div class="unit"><div class="num" id="h">00</div><div class="label">Hours</div></div>
+          <div class="unit"><div class="num" id="m">00</div><div class="label">Minutes</div></div><div class="unit"><div class="num" id="s">00</div><div class="label">Seconds</div></div></div>
+          <div class="set"><input type="datetime-local" id="target"><button onclick="setTarget()">Set Target</button></div>
+          <script>let target=new Date(Date.now()+86400000*7);function setTarget(){const v=document.getElementById('target').value;if(v)target=new Date(v)}
+          function update(){const diff=Math.max(0,target-Date.now());const d=Math.floor(diff/86400000);const h=Math.floor((diff%86400000)/3600000);const m=Math.floor((diff%3600000)/60000);const s=Math.floor((diff%60000)/1000);
+          document.getElementById('d').textContent=String(d).padStart(2,'0');document.getElementById('h').textContent=String(h).padStart(2,'0');
+          document.getElementById('m').textContent=String(m).padStart(2,'0');document.getElementById('s').textContent=String(s).padStart(2,'0')}
+          setInterval(update,1000);update()</script></body></html>'''
+              }
+          ]
+
+          try:
+              g = Github(os.environ['GH_PAT'])
+              user = g.get_user()
+              existing = [r.name for r in user.get_repos()]
+
+              print("🎨 Creative Bot — Building web tools...")
+
+              created = []
+              for tool in TOOLS:
+                  if tool['name'] in existing:
+                      print(f"⏭️ {tool['name']} exists, skipping")
+                      continue
+
+                  print(f"\n🚀 Building: {tool['name']}")
+                  repo = user.create_repo(tool['name'], description=tool['desc'], auto_init=True, private=False)
+                  repo.create_file("index.html", "feat: add app", tool['html'])
+                  repo.create_file("README.md", "docs: add README", f"# {tool['name'].replace('-',' ').title()}\n\n{tool['desc']}\n\n🌐 Live: https://{user.login}.github.io/{tool['name']}/\n")
+                  repo.replace_topics(['tool', 'web-app', 'html', 'css', 'javascript', 'bot-generated'])
+
+                  # Enable GitHub Pages
+                  try:
+                      token = os.environ['GH_PAT']
+                      data = json.dumps({"source": {"branch": "main", "path": "/"}}).encode()
+                      req = urllib.request.Request(f"https://api.github.com/repos/{user.login}/{tool['name']}/pages", data=data,
+                          headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json", "Content-Type": "application/json"}, method="POST")
+                      urllib.request.urlopen(req)
+                  except: pass
+
+                  live_url = f"https://{user.login}.github.io/{tool['name']}/"
+                  repo_url = f"https://github.com/{user.login}/{tool['name']}"
+                  created.append({"name": tool['name'], "desc": tool['desc'], "live": live_url, "repo": repo_url})
+                  print(f"  ✅ Live: {live_url}")
+
+              if created:
+                  links_html = "".join(f'<div style="background:#0d1117;padding:15px;border-radius:8px;margin:10px 0"><b>{c["name"].replace("-"," ").title()}</b><br>{c["desc"]}<br>🌐 <a href="{c["live"]}" style="color:#58a6ff">{c["live"]}</a><br>📦 <a href="{c["repo"]}" style="color:#8b949e">{c["repo"]}</a></div>' for c in created)
+                  html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
+                  <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
+                  <h1 style="color:#bc8cff">🎨 {len(created)} New Tools Deployed!</h1>
+                  <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">
+                  {links_html}
+                  <p style="color:#8b949e;margin-top:20px">All tools are live and ready to use! 🚀</p></div></body></html>"""
+                  notify_all(f"{len(created)} tools deployed!", html)
+
+              print(f"\n🎉 Done! Created {len(created)} tools")
+
+          except Exception as e:
+              print(f"❌ Error: {e}"); traceback.print_exc()
+          PYTHON

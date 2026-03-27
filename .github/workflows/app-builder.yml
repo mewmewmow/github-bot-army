@@ -1,0 +1,251 @@
+name: 📱 App Builder Bot
+
+on:
+  schedule:
+    - cron: '0 4 * * 3'  # Weekly Wednesday 4am UTC
+  workflow_dispatch:
+    inputs:
+      app_type:
+        description: 'Type of app to build'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - chrome-extension
+          - electron-desktop
+          - react-native
+          - python-cli
+          - discord-bot
+          - telegram-bot
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  build-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install PyGithub
+
+      - name: 📱 Build App
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          APP_TYPE: ${{ github.event.inputs.app_type }}
+        run: |
+          python3 << 'PYTHON'
+          import os, json, smtplib, urllib.request, base64, traceback
+          from datetime import datetime
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from github import Github
+
+          def notify(subject, html):
+              try:
+                  cfg = {k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]):
+                      msg = MIMEMultipart("alternative")
+                      msg["Subject"]=f"📱 {subject}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
+                      msg.attach(MIMEText(html,"html"))
+                      with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
+                          s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
+              except: pass
+              try:
+                  t=os.environ.get('TELEGRAM_BOT_TOKEN','');c=os.environ.get('TELEGRAM_CHAT_ID','')
+                  if t and c:
+                      url=f"https://api.telegram.org/bot{t}/sendMessage"
+                      data=json.dumps({"chat_id":c,"text":f"📱 {subject}\n\nCheck email for download links!","parse_mode":"Markdown"}).encode()
+                      req=urllib.request.Request(url,data=data,headers={"Content-Type":"application/json"})
+                      urllib.request.urlopen(req,timeout=10)
+              except: pass
+
+          APPS = [
+              {
+                  "name": "task-tracker-cli",
+                  "type": "python-cli",
+                  "description": "Beautiful CLI task tracker with priorities and due dates",
+                  "files": {
+                      "task_tracker.py": '''#!/usr/bin/env python3
+          """Task Tracker CLI - Beautiful task management from your terminal"""
+          import json, os, sys
+          from datetime import datetime
+
+          FILE = os.path.expanduser("~/.tasks.json")
+
+          def load():
+              if os.path.exists(FILE):
+                  with open(FILE) as f: return json.load(f)
+              return {"tasks": []}
+
+          def save(data):
+              with open(FILE, "w") as f: json.dump(data, f, indent=2)
+
+          def add(title, priority="medium"):
+              data = load()
+              data["tasks"].append({"id": len(data["tasks"])+1, "title": title, "priority": priority, "done": False, "created": datetime.now().isoformat()})
+              save(data)
+              print(f"✅ Added: {title} [{priority}]")
+
+          def list_tasks():
+              data = load()
+              if not data["tasks"]: print("No tasks yet!"); return
+              for t in data["tasks"]:
+                  icon = "✅" if t["done"] else "⬜"
+                  p = {"high":"🔴","medium":"🟡","low":"🟢"}.get(t["priority"],"⚪")
+                  print(f"  {icon} #{t['id']} {p} {t['title']}")
+
+          def done(task_id):
+              data = load()
+              for t in data["tasks"]:
+                  if t["id"] == int(task_id):
+                      t["done"] = True
+                      save(data)
+                      print(f"✅ Completed: {t['title']}")
+                      return
+              print(f"❌ Task #{task_id} not found")
+
+          if __name__ == "__main__":
+              args = sys.argv[1:]
+              if not args or args[0] == "list": list_tasks()
+              elif args[0] == "add" and len(args) > 1: add(" ".join(args[1:]), args[2] if len(args) > 2 else "medium")
+              elif args[0] == "done" and len(args) > 1: done(args[1])
+              else: print("Usage: python task_tracker.py [add <title> [high|medium|low]|list|done <id>]")
+          ''',
+                      "README.md": "# Task Tracker CLI 📋\n\nBeautiful task management from your terminal.\n\n## Usage\n```bash\npython task_tracker.py add \"Buy groceries\" high\npython task_tracker.py list\npython task_tracker.py done 1\n```\n",
+                      "setup.sh": "#!/bin/bash\nchmod +x task_tracker.py\nln -sf $(pwd)/task_tracker.py /usr/local/bin/tasks\necho \"✅ Installed! Use: tasks add/list/done\"\n"
+                  }
+              },
+              {
+                  "name": "weather-cli",
+                  "type": "python-cli",
+                  "description": "Quick weather check from terminal using wttr.in",
+                  "files": {
+                      "weather.py": '''#!/usr/bin/env python3
+          """Weather CLI - Quick weather from your terminal"""
+          import sys, urllib.request
+
+          def get_weather(city="Manila"):
+              try:
+                  url = f"https://wttr.in/{city}?format=%l:+%c+%t+%h+%w\\n"
+                  resp = urllib.request.urlopen(url, timeout=10)
+                  print(resp.read().decode().strip())
+                  # Detailed
+                  url2 = f"https://wttr.in/{city}?format=3"
+                  resp2 = urllib.request.urlopen(url2, timeout=10)
+                  print(resp2.read().decode().strip())
+              except Exception as e: print(f"Error: {e}")
+
+          if __name__ == "__main__":
+              city = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "Manila"
+              get_weather(city)
+          ''',
+                      "README.md": "# Weather CLI 🌤️\n\nQuick weather from your terminal.\n\n```bash\npython weather.py Manila\npython weather.py Tokyo\n```\n"
+                  }
+              },
+              {
+                  "name": "notes-app",
+                  "type": "electron-desktop",
+                  "description": "Simple desktop notes app (Electron-ready)",
+                  "files": {
+                      "package.json": json.dumps({
+                          "name": "notes-app", "version": "1.0.0", "description": "Simple desktop notes",
+                          "main": "main.js",
+                          "scripts": {"start": "electron .", "build": "electron-builder"},
+                          "dependencies": {"electron": "^28.0.0"},
+                          "devDependencies": {"electron-builder": "^24.0.0"}
+                      }, indent=2),
+                      "main.js": '''const { app, BrowserWindow } = require('electron');
+          function createWindow() {
+            const win = new BrowserWindow({ width: 800, height: 600, webPreferences: { nodeIntegration: true } });
+            win.loadFile('index.html');
+          }
+          app.whenReady().then(createWindow);
+          app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+          ''',
+                      "index.html": '''<!DOCTYPE html>
+          <html><head><title>Notes</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #e0e0e0; margin: 0; padding: 20px; }
+            h1 { color: #00d4ff; text-align: center; }
+            textarea { width: 100%; height: 400px; background: #16213e; color: #e0e0e0; border: 1px solid #00d4ff44; border-radius: 8px; padding: 15px; font-size: 16px; resize: none; }
+            .btn { background: #00d4ff; color: #1a1a2e; border: none; padding: 10px 25px; border-radius: 6px; cursor: pointer; margin-top: 10px; }
+          </style></head>
+          <body>
+            <h1>📝 Notes</h1>
+            <textarea id="notes" placeholder="Start typing your notes..."></textarea>
+            <button class="btn" onclick="localStorage.setItem('notes',document.getElementById('notes').value)">💾 Save</button>
+            <script>document.getElementById('notes').value = localStorage.getItem('notes') || '';</script>
+          </body></html>''',
+                      "README.md": "# Notes App 📝\n\nSimple desktop notes app built with Electron.\n\n```bash\nnpm install\nnpm start\n```\n"
+                  }
+              }
+          ]
+
+          try:
+              g = Github(os.environ['GH_PAT'])
+              user = g.get_user()
+              atype = os.environ.get('APP_TYPE', 'auto').strip()
+              existing = [r.name for r in user.get_repos()]
+
+              print("📱 App Builder Bot — Creating downloadable apps...")
+
+              if atype == 'auto':
+                  project = None
+                  for p in APPS:
+                      if p['name'] not in existing:
+                          project = p; break
+                  if not project: project = APPS[0]
+              else:
+                  matching = [p for p in APPS if p['type'] == atype]
+                  project = matching[0] if matching else APPS[0]
+
+              if project['name'] in existing:
+                  project['name'] = f"{project['name']}-{datetime.now().strftime('%m%d')}"
+
+              print(f"\n🚀 Building: {project['name']}")
+
+              repo = user.create_repo(project['name'], description=project['description'], auto_init=True, private=False)
+              print(f"✅ Repo: https://github.com/{user.login}/{project['name']}")
+
+              for filename, content in project['files'].items():
+                  repo.create_file(filename, f"feat: add {filename}", content)
+
+              repo.replace_topics([project['type'], 'app', 'bot-generated'])
+
+              repo_url = f"https://github.com/{user.login}/{project['name']}"
+              clone_url = f"git clone {repo_url}.git"
+
+              print(f"\n🎉 APP CREATED!")
+              print(f"📦 Repo: {repo_url}")
+              print(f"📥 Clone: {clone_url}")
+
+              html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
+              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
+              <h1 style="color:#bc8cff">📱 New App Created!</h1>
+              <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">
+              <h2>{project['name'].replace('-',' ').title()}</h2>
+              <p>{project['description']}</p>
+              <div style="background:#0d1117;padding:20px;border-radius:8px;margin:20px 0">
+              <p>📦 <b>Source Code:</b><br><a href="{repo_url}" style="color:#bc8cff">{repo_url}</a></p><br>
+              <p>📥 <b>Download/Clone:</b><br><code style="background:#161b22;padding:5px 10px;border-radius:4px">{clone_url}</code></p>
+              </div>
+              <p>Type: <b>{project['type']}</b></p></div></body></html>"""
+              notify(f"New App: {project['name']}", html)
+
+          except Exception as e:
+              print(f"❌ Error: {e}")
+              traceback.print_exc()
+          PYTHON
