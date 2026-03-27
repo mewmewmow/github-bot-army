@@ -32,3 +32,5 @@ config/api_registry.json
 # Logs
 *.log
 logs/
+set_smtp.py
+set_secrets.py
