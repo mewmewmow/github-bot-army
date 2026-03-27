@@ -313,7 +313,7 @@ jobs:
               repo = user.create_repo(
                   project['name'],
                   description=project['description'],
-                  auto_init=True,
+                  auto_init=False,
                   private=False
               )
               print(f"✅ Repo created: https://github.com/{user.login}/{project['name']}")

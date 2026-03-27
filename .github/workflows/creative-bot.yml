@@ -186,7 +186,7 @@ jobs:
                       continue
 
                   print(f"\n🚀 Building: {tool['name']}")
-                  repo = user.create_repo(tool['name'], description=tool['desc'], auto_init=True, private=False)
+                  repo = user.create_repo(tool['name'], description=tool['desc'], auto_init=False, private=False)
                   repo.create_file("index.html", "feat: add app", tool['html'])
                   repo.create_file("README.md", "docs: add README", f"# {tool['name'].replace('-',' ').title()}\n\n{tool['desc']}\n\n🌐 Live: https://{user.login}.github.io/{tool['name']}/\n")
                   repo.replace_topics(['tool', 'web-app', 'html', 'css', 'javascript', 'bot-generated'])

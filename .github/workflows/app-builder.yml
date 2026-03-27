@@ -217,7 +217,7 @@ jobs:
 
               print(f"\n🚀 Building: {project['name']}")
 
-              repo = user.create_repo(project['name'], description=project['description'], auto_init=True, private=False)
+              repo = user.create_repo(project['name'], description=project['description'], auto_init=False, private=False)
               print(f"✅ Repo: https://github.com/{user.login}/{project['name']}")
 
               for filename, content in project['files'].items():
