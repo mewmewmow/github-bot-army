@@ -10,13 +10,10 @@ permissions:
 jobs:
   trigger-all:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
     steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
       - name: 🚀 Trigger All Bots
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           REPO="mewmewmow/github-bot-army"
           
@@ -33,22 +30,16 @@ jobs:
           )
           
           echo "🚀 TRIGGERING ALL BOTS..."
-          echo "=========================="
           
           for wf in "${WORKFLOWS[@]}"; do
-            echo ""
             echo "Triggering: $wf"
-            gh workflow run "$wf" --repo "$REPO" 2>&1 && echo "✅ $wf triggered!" || echo "❌ Failed: $wf"
+            gh workflow run "$wf" --repo "$REPO" 2>&1 && echo "✅ $wf" || echo "❌ $wf"
             sleep 2
           done
           
           echo ""
-          echo "=========================="
           echo "✅ ALL BOTS TRIGGERED!"
           echo ""
-          echo "Waiting 10 seconds for runs to start..."
           sleep 10
-          
-          echo ""
           echo "📊 RECENT RUNS:"
           gh run list --repo "$REPO" --limit 15
