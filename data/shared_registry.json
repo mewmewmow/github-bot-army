@@ -1,0 +1,31 @@
+{
+  "apis": [
+    {
+      "n": "GitHub Models",
+      "u": "https://github.com/marketplace",
+      "m": [
+        "gpt-4o-mini"
+      ]
+    },
+    {
+      "n": "HuggingFace",
+      "u": "https://huggingface.co",
+      "m": [
+        "Llama-3.1-8B"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "n": "agent-discord-bot",
+      "u": "https://github.com/mewmewmow/agent-discord-bot"
+    }
+  ],
+  "actions": [
+    "Found 2 APIs",
+    "1 projects need keys",
+    "Injected into 0 projects",
+    "Failed bots: {'\ud83e\uddec Agent Builder'}"
+  ],
+  "last_run": "2026-03-27T18:57:03.000103"
+}
