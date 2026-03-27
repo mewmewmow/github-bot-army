@@ -1,0 +1,92 @@
+name: Bot Coordinator (Brain)
+on:
+  schedule:
+    - cron: 0 */6 * * *
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+jobs:
+  coordinate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: 3.12 }
+      - run: pip install PyGithub requests
+      - name: Bot Coordinator
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          python3 << PYEND
+          import os, json, smtplib, urllib.request, base64
+          from datetime import datetime
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          from github import Github
+          def notify(s, h):
+              try:
+                  c={k:os.environ.get(k,) for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+                  if all([c['SMTP_HOST'],c['SMTP_USER'],c['SMTP_PASS'],c['EMAIL_TO']]):
+                      m=MIMEMultipart('alternative');m['Subject']=f'Bot: {s}';m['From']=c['EMAIL_FROM'] or c['SMTP_USER'];m['To']=c['EMAIL_TO']
+                      m.attach(MIMEText(h,'html'))
+                      with smtplib.SMTP(c['SMTP_HOST'],int(c['SMTP_PORT'] or 587)) as x:x.starttls();x.login(c['SMTP_USER'],c['SMTP_PASS']);x.send_message(m)
+              except: pass
+          g=Github(os.environ['GH_PAT']);u=g.get_user();R='github-bot-army'
+          try: repo=g.get_repo(f'{u.login}/{R}')
+          except: print('Repo not found');exit(1)
+          print('Bot Coordinator running...')
+          reg={'apis':[],'projects':[],'actions':[],'last_run':datetime.now().isoformat()}
+          try:
+              c=repo.get_contents('data/shared_registry.json');reg=json.loads(base64.b64decode(c.content).decode());sha=c.sha
+          except: sha=None
+          FREE=[{'n':'OpenRouter','u':'https://openrouter.ai','m':['llama-3.1-8b:free','gemma-2-9b:free']},{'n':'Groq','u':'https://console.groq.com','m':['llama-3.1-8b-instant']},{'n':'GitHub Models','u':'https://github.com/marketplace','m':['gpt-4o-mini']},{'n':'HuggingFace','u':'https://huggingface.co','m':['Llama-3.1-8B']},{'n':'Together AI','u':'https://api.together.xyz','m':['Llama-3.1-8B']}]
+          ok=[]
+          for a in FREE:
+              try:
+                  r=urllib.request.urlopen(a['u'],timeout=8)
+                  if r.status in [200,401,403]:ok.append(a);print(f'OK: {a["n"]}')
+              except:print(f'FAIL: {a["n"]}')
+          reg['apis']=ok;reg['actions'].append(f'Found {len(ok)} APIs')
+          need=[]
+          for r in u.get_repos():
+              if r.fork:continue
+              try:
+                  e=r.get_contents('.env.example');c=base64.b64decode(e.content).decode()
+                  if any(k in c.upper() for k in ['OPENAI_API_KEY','API_KEY','OPENROUTER']):need.append({'n':r.name,'u':r.html_url})
+              except:pass
+          reg['projects']=need;reg['actions'].append(f'{len(need)} projects need keys')
+          injected=[]
+          if ok and need:
+              best=ok[0]
+              for p in need:
+                  try:
+                      rp=g.get_repo(f'{u.login}/{p["n"]}');ec=rp.get_contents('.env.example');cur=base64.b64decode(ec.content).decode()
+                      if 'OPENROUTER' in cur and '# FREE:' not in cur:
+                          upd=cur+f'# FREE: {best["n"]} - {best["u"]}\n# Models: {best["m"]}\n'
+                          rp.update_file('.env.example','docs: add free API info',upd,ec.sha);injected.append(p['n']);print(f'Injected: {p["n"]}')
+                  except:pass
+          reg['actions'].append(f'Injected into {len(injected)} projects')
+          try:
+              runs=list(repo.get_workflow_runs()[:20]);failed={r.name for r in runs if r.conclusion=='failure'}
+              if failed:reg['actions'].append(f'Failed bots: {failed}');print(f'Failed: {failed}')
+              else:print('All bots healthy')
+          except:pass
+          reg['last_run']=datetime.now().isoformat();rj=json.dumps(reg,indent=2)
+          try:
+              if sha:repo.update_file('data/shared_registry.json','Coordinator update',rj,sha)
+              else:repo.create_file('data/shared_registry.json','Create registry',rj)
+              print('Registry saved')
+          except Exception as e:print(f'Error: {e}')
+          if ok:
+              ah=''.join(f'OK: {a["n"]} ({a["u"]})<br>' for a in ok)
+              html=f'<html><body style="font-family:sans-serif;padding:20px;background:#0d1117;color:#c9d1d9"><h1>Bot Coordinator</h1><h2>APIs ({len(ok)})</h2>{ah}<h2>Projects ({len(need)})</h2>{len(need)} need keys<h2>Injected ({len(injected)})</h2>{injected}</body></html>'
+              notify(f'Coordinator: {len(ok)} APIs, {len(injected)} injected',html)
+          print('Done!')
+          PYEND
