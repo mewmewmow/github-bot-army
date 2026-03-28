@@ -1,23 +1,28 @@
 name: 📊 Analytics Bot
+
 on:
   schedule:
-    - cron: '0 8 * * *'
+    - cron: '0 8 * * *'  # Daily 8am UTC
   workflow_dispatch:
+
 permissions:
   contents: write
+
 jobs:
   analytics:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: pip install PyGithub
+        with:
+          python-version: '3.12'
+      - name: Install PyGithub
+        run: pip install PyGithub
       - name: 📊 Generate Analytics
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          python3 -c "
+          python3 << 'PYTHON'
 import os, json
 from github import Github
 
@@ -27,11 +32,18 @@ user = g.get_user()
 total = sum(1 for r in user.get_repos() if not r.fork)
 stars = sum(r.stargazers_count for r in user.get_repos() if not r.fork)
 
+print(f'Found {total} repos with {stars} stars')
+
 os.makedirs('data', exist_ok=True)
 with open('data/analytics.json', 'w') as f:
     json.dump({'total': total, 'stars': stars}, f)
-print(f'✅ {total} repos, {stars} stars')
-"
-      - run: |
-          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
-          git add data/ && git diff --staged --quiet && git commit -m "📊 Analytics" && git push || echo "No"
+
+print('✅ Done!')
+PYTHON
+      - name: 💾 Commit Data
+        run: |
+          git config user.name "Analytics Bot"
+          git config user.email "bot@github-bot-army.dev"
+          git add data/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "📊 Analytics — $(date +%Y-%m-%d)" || true
+          git push || echo "No changes"
