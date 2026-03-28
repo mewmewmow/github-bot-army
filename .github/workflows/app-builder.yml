@@ -41,9 +41,6 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           APP_TYPE: ${{ github.event.inputs.app_type }}
         run: |
@@ -65,7 +62,6 @@ jobs:
                           s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
               except: pass
               try:
-                  t=os.environ.get('TELEGRAM_BOT_TOKEN','');c=os.environ.get('TELEGRAM_CHAT_ID','')
                   if t and c:
                       url=f"https://api.telegram.org/bot{t}/sendMessage"
                       data=json.dumps({"chat_id":c,"text":f"📱 {subject}\n\nCheck email for download links!","parse_mode":"Markdown"}).encode()
