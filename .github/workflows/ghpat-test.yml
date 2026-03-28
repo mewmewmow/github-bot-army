@@ -1,0 +1,19 @@
+name: GH_PAT Test
+on:
+  push:
+    branches:
+      - main
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Testing GH_PAT"
+      - name: Use GH_PAT
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          python3 -c "
+import os
+print('GH_PAT is set:', bool(os.environ.get('GH_PAT')))
+print('Length:', len(os.environ.get('GH_PAT', '')))
+"
