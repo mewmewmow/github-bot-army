@@ -31,6 +31,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python3 << 'PYTHON'
           import os, json, smtplib, urllib.request, traceback
@@ -62,6 +63,16 @@ jobs:
                   if wh:
                       embed={"embeds":[{"title":f"🎨 {subject}","description":"New creation deployed!","color":10181046,"timestamp":datetime.utcnow().isoformat()}]}
                       urllib.request.urlopen(urllib.request.Request(wh,data=json.dumps(embed).encode(),headers={"Content-Type":"application/json"}),timeout=10)
+              except: pass
+
+              # Slack
+              try:
+                  import re
+                  sw=os.environ.get('SLACK_WEBHOOK_URL','')
+                  if sw:
+                      clean_body=re.sub(r'<[^>]+>', '', html)[:3000]
+                      payload={"text": f"🎨 *{subject}*", "blocks":[{"type":"header","text":{"type":"plain_text","text":f"🎨 {subject}"}},{"type":"section","text":{"type":"mrkdwn","text":clean_body}}]}
+                      urllib.request.urlopen(urllib.request.Request(sw,data=json.dumps(payload).encode(),headers={"Content-Type":"application/json"}),timeout=10)
               except: pass
 
           TOOLS = [
