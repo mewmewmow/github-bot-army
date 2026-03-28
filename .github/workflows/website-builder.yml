@@ -50,9 +50,6 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           PROJECT_TYPE: ${{ github.event.inputs.project_type }}
         run: |
@@ -79,27 +76,6 @@ jobs:
                           s.starttls(); s.login(cfg['SMTP_USER'], cfg['SMTP_PASS']); s.send_message(msg)
                       channels["email"] = "✅"
               except Exception as e: channels["email"] = f"❌ {e}"
-              # Telegram
-              try:
-                  t = os.environ.get('TELEGRAM_BOT_TOKEN',''); c = os.environ.get('TELEGRAM_CHAT_ID','')
-                  if t and c:
-                      text = f"🌐 *{subject}*\n\nCheck your email for the full report with links!"
-                      url = f"https://api.telegram.org/bot{t}/sendMessage"
-                      data = json.dumps({"chat_id": c, "text": text, "parse_mode": "Markdown"}).encode()
-                      req = urllib.request.Request(url, data=data, headers={"Content-Type":"application/json"})
-                      urllib.request.urlopen(req, timeout=10)
-                      channels["telegram"] = "✅"
-              except: pass
-              # Discord
-              try:
-                  wh = os.environ.get('DISCORD_WEBHOOK_URL','')
-                  if wh:
-                      embed = {"embeds":[{"title":f"🌐 {subject}","description":"New project deployed! Check email for links.","color":5763719,"timestamp":datetime.utcnow().isoformat()}]}
-                      data = json.dumps(embed).encode()
-                      req = urllib.request.Request(wh, data=data, headers={"Content-Type":"application/json"})
-                      urllib.request.urlopen(req, timeout=10)
-                      channels["discord"] = "✅"
-              except: pass
               # Slack
               try:
                   import re
