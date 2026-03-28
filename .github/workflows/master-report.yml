@@ -2,7 +2,7 @@ name: 📬 Master Daily Report
 
 on:
   schedule:
-    - cron: '0 9 * * *'  # Daily at 9am UTC
+    - cron: '0 9 * * *'
   workflow_dispatch:
 
 permissions:
@@ -16,215 +16,41 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: pip install PyGithub requests
+      - run: pip install PyGithub
 
       - name: 📬 Generate Master Report
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          python3 << 'PYTHON'
-          import os, json, smtplib, urllib.request, re
-          from datetime import datetime, timedelta
-          from email.mime.text import MIMEText
-          from email.mime.multipart import MIMEMultipart
-          from github import Github
+          python3 -c "
+import os, json
+from github import Github
 
-          # ---- Multi-Channel Notify ----
-          def notify_all(subject, html_body):
-              channels = {"email": "⏭️", "telegram": "⏭️", "discord": "⏭️"}
-              
-              # EMAIL
-              try:
-                  cfg = {k: os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
-                  if all([cfg['SMTP_HOST'], cfg['SMTP_USER'], cfg['SMTP_PASS'], cfg['EMAIL_TO']]):
-                      msg = MIMEMultipart("alternative")
-                      msg["Subject"] = f"🤖 {subject}"
-                      msg["From"] = cfg['EMAIL_FROM'] or cfg['SMTP_USER']
-                      msg["To"] = cfg['EMAIL_TO']
-                      msg.attach(MIMEText(html_body, "html"))
-                      with smtplib.SMTP(cfg['SMTP_HOST'], int(cfg['SMTP_PORT'] or 587)) as s:
-                          s.starttls(); s.login(cfg['SMTP_USER'], cfg['SMTP_PASS']); s.send_message(msg)
-                      channels["email"] = "✅"
-              except Exception as e: channels["email"] = f"❌ {e}"
-              
-              # TELEGRAM
-              if token and chat_id:
-                  try:
-                      text = f"🤖 *{subject}*\n\n"
-                      text += re.sub(r'<[^>]+>', '', html_body)[:3500]
-                      url = f"https://api.telegram.org/bot{token}/sendMessage"
-                      data = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
-                      req = urllib.request.Request(url, data=data, headers={"Content-Type":"application/json"})
-                      urllib.request.urlopen(req, timeout=10)
-                      channels["telegram"] = "✅"
-                  except Exception as e: channels["telegram"] = f"❌ {e}"
-              
-              # DISCORD
-              if webhook:
-                  try:
-                      embed = {"embeds":[{"title":f"🤖 {subject}","description":re.sub(r'<[^>]+>','',html_body)[:2000],"color":3447003,"timestamp":datetime.utcnow().isoformat(),"footer":{"text":"GitHub Bot Army"}}]}
-                      data = json.dumps(embed).encode()
-                      req = urllib.request.Request(webhook, data=data, headers={"Content-Type":"application/json"})
-                      urllib.request.urlopen(req, timeout=10)
-                      channels["discord"] = "✅"
-                  except Exception as e: channels["discord"] = f"❌ {e}"
-              
-              # Slack
-              slack_webhook = os.environ.get('SLACK_WEBHOOK_URL', '')
-              if slack_webhook:
-                  try:
-                      clean_body = re.sub(r'<[^>]+>', '', html_body)[:3000]
-                      payload = {"text": f"🤖 *{subject}*", "blocks": [{"type": "header", "text": {"type": "plain_text", "text": f"🤖 {subject}"}}, {"type": "section", "text": {"type": "mrkdwn", "text": clean_body}}]}
-                      data = json.dumps(payload).encode()
-                      req = urllib.request.Request(slack_webhook, data=data, headers={"Content-Type": "application/json"})
-                      urllib.request.urlopen(req, timeout=10)
-                      channels["slack"] = "✅"
-                  except Exception as e: channels["slack"] = f"❌ {e}"
-              
-              print(f"📬 Notifications: Email={channels['email']} Telegram={channels['telegram']} Discord={channels['discord']} Slack={channels.get('slack','⏭️')}")
+g = Github(os.environ['GH_PAT'])
+user = g.get_user()
 
-          # ---- Gather Data from All Bots ----
-          g = Github(os.environ['GH_PAT'])
-          user = g.get_user()
-          now = datetime.now()
+total = 0
+stars = 0
+forks = 0
+for r in user.get_repos():
+    if r.fork: continue
+    total += 1
+    stars += r.stargazers_count
+    forks += r.forks_count
 
-          print("📬 Master Daily Report — Gathering data from all bots...")
+print(f'📊 Total: {total} repos, ⭐ {stars} stars, 🍴 {forks} forks')
 
-          # 1. Repo Health
-          total_repos = 0
-          healthy_repos = 0
-          repos_with_issues = []
-          total_stars = 0
-          total_forks = 0
-          languages = {}
-          recently_active = []
+os.makedirs('data', exist_ok=True)
+with open('data/master_report.json', 'w') as f:
+    json.dump({'total': total, 'stars': stars, 'forks': forks}, f)
 
-          for repo in user.get_repos():
-              if repo.fork: continue
-              total_repos += 1
-              total_stars += repo.stargazers_count
-              total_forks += repo.forks_count
-              if repo.language: languages[repo.language] = languages.get(repo.language, 0) + 1
+print('✅ Report generated!')
+"
 
-              if (now - repo.updated_at.replace(tzinfo=None)).days < 7:
-                  recently_active.append(repo.name)
-
-              # Health check
-              issues = []
-              if not repo.description: issues.append("No description")
-              if not repo.get_topics(): issues.append("No topics")
-              try: repo.get_readme()
-              except: issues.append("No README")
-              try: repo.get_contents("LICENSE")
-              except: issues.append("No LICENSE")
-              try: repo.get_contents(".gitignore")
-              except: issues.append("No .gitignore")
-
-              if issues:
-                  repos_with_issues.append({"name": repo.name, "issues": issues})
-              else:
-                  healthy_repos += 1
-
-          # 2. Security Check (quick)
-          security_alerts = []
-          import base64
-          SECRET_PATTERNS = [
-              (r'ghp_[a-zA-Z0-9]{36}', 'GitHub Token'),
-              (r'sk-[a-zA-Z0-9]{48}', 'OpenAI Key'),
-              (r'AKIA[0-9A-Z]{16}', 'AWS Key'),
-          ]
-          for repo in user.get_repos():
-              if repo.fork: continue
-              for envf in ['.env','.env.local']:
-                  try:
-                      content = repo.get_contents(envf)
-                      decoded = base64.b64decode(content.content).decode('utf-8','ignore')
-                      for line in decoded.split('\n'):
-                          if '=' in line and not line.startswith('#'):
-                              val = line.split('=',1)[1].strip().strip('"').strip("'")
-                              if val and val not in ['','xxx','changeme','your_key_here']:
-                                  for pat, name in SECRET_PATTERNS:
-                                      if re.search(pat, val):
-                                          security_alerts.append(f"🚨 {repo.name}/{envf}: {name} EXPOSED!")
-                  except: pass
-
-          # 3. API Status (quick check)
-          api_status = []
-          apis = {"OpenRouter":"https://openrouter.ai","HuggingFace":"https://huggingface.co","Groq":"https://api.groq.com","GitHub Models":"https://models.inference.ai.azure.com"}
-          for name, url in apis.items():
-              try:
-                  r = urllib.request.urlopen(url, timeout=5)
-                  api_status.append(f"✅ {name}")
-              except: api_status.append(f"❌ {name}")
-
-          # 4. Workflow Health (check if bots are running)
-          workflow_health = []
-          try:
-              runs = list(g.get_repo(f"{user.login}/github-bot-army").get_workflow_runs()[:10])
-              seen = {}
-              for run in runs:
-                  wf = run.name
-                  if wf not in seen:
-                      status = "✅" if run.conclusion == "success" else "⚠️" if run.conclusion == "failure" else "🔄"
-                      seen[wf] = f"{status} {wf} — {run.created_at.strftime('%m/%d %H:%M')}"
-              workflow_health = list(seen.values())
-          except:
-              workflow_health.append("⚠️ Cannot check workflow status")
-
-          # ---- Generate Report ----
-          lang_str = ", ".join(f"{k}({v})" for k,v in sorted(languages.items(), key=lambda x:-x[1])[:8])
-          health_pct = round((healthy_repos / max(total_repos,1)) * 100)
-
-          html = f"""<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#0d1117;color:#c9d1d9">
-          <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
-          <h1 style="color:#58a6ff;margin-top:0">🤖 Daily Bot Army Report</h1>
-          <p style="color:#8b949e">{now.strftime('%A, %B %d, %Y — %H:%M UTC')}</p>
-          <hr style="border:none;border-top:1px solid #30363d">
-          
-          <div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0">
-          <div style="background:#0d1117;padding:12px;border-radius:8px;flex:1;min-width:100px;text-align:center">
-          <div style="font-size:28px;color:#58a6ff">{total_repos}</div><div style="color:#8b949e;font-size:12px">Repos</div></div>
-          <div style="background:#0d1117;padding:12px;border-radius:8px;flex:1;min-width:100px;text-align:center">
-          <div style="font-size:28px;color:#f0883e">{total_stars}</div><div style="color:#8b949e;font-size:12px">Stars</div></div>
-          <div style="background:#0d1117;padding:12px;border-radius:8px;flex:1;min-width:100px;text-align:center">
-          <div style="font-size:28px;color:#3fb950">{health_pct}%</div><div style="color:#8b949e;font-size:12px">Health</div></div>
-          <div style="background:#0d1117;padding:12px;border-radius:8px;flex:1;min-width:100px;text-align:center">
-          <div style="font-size:28px;color:#bc8cff">{len(recently_active)}</div><div style="color:#8b949e;font-size:12px">Active</div></div>
-          </div>"""
-
-          if security_alerts:
-              html += '<h2 style="color:#f85149">🛡️ Security Alerts</h2>'
-              for a in security_alerts:
-                  html += f'<p style="color:#f85149">{a}</p>'
-
-          if repos_with_issues:
-              html += f'<h2>🔧 {len(repos_with_issues)} Repos Need Attention</h2><ul>'
-              for r in repos_with_issues[:10]:
-                  html += f'<li><b>{r["name"]}:</b> {", ".join(r["issues"])}</li>'
-              html += '</ul>'
-
-          html += f'<h2>📡 API Status</h2><p>{" | ".join(api_status)}</p>'
-          html += f'<h2>⚙️ Bot Status</h2><p>{"<br>".join(workflow_health)}</p>'
-          html += f'<h2>💻 Languages</h2><p>{lang_str}</p>'
-          html += f'<h2>🔄 Active This Week</h2><p>{", ".join(recently_active[:10]) or "None"}</p>'
-          html += '</div></body></html>'
-
-          subject = f"Daily Report — {health_pct}% health, {len(security_alerts)} alerts, {len(repos_with_issues)} repos need attention"
-          notify_all(subject, html)
-
-          print(f"\n{'='*50}")
-          print(f"📬 MASTER DAILY REPORT")
-          print(f"{'='*50}")
-          print(f"📊 Repos: {total_repos} | ✅ Healthy: {healthy_repos} ({health_pct}%)")
-          print(f"⭐ Stars: {total_stars} | 🍴 Forks: {total_forks}")
-          print(f"🛡️ Security alerts: {len(security_alerts)}")
-          print(f"🔄 Active: {len(recently_active)} repos")
-          print(f"📬 Notifications sent to all channels")
-          PYTHON
+      - name: 💾 Commit
+        run: |
+          git config user.name "Bot"
+          git config user.email "bot@github-bot-army.dev"
+          git add data/ 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "📬 Report" || true
+          git push || true
