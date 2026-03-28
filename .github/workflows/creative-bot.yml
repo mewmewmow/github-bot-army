@@ -28,9 +28,6 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python3 << 'PYTHON'
@@ -48,21 +45,6 @@ jobs:
                       msg=MIMEMultipart("alternative");msg["Subject"]=f"🎨 {subject}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
                       msg.attach(MIMEText(html,"html"))
                       with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
-              except: pass
-              # Telegram
-              try:
-                  t=os.environ.get('TELEGRAM_BOT_TOKEN','');c=os.environ.get('TELEGRAM_CHAT_ID','')
-                  if t and c:
-                      data=json.dumps({"chat_id":c,"text":f"🎨 {subject}\n\nCheck email for live links!","parse_mode":"Markdown"}).encode()
-                      req=urllib.request.Request(f"https://api.telegram.org/bot{t}/sendMessage",data=data,headers={"Content-Type":"application/json"})
-                      urllib.request.urlopen(req,timeout=10)
-              except: pass
-              # Discord
-              try:
-                  wh=os.environ.get('DISCORD_WEBHOOK_URL','')
-                  if wh:
-                      embed={"embeds":[{"title":f"🎨 {subject}","description":"New creation deployed!","color":10181046,"timestamp":datetime.utcnow().isoformat()}]}
-                      urllib.request.urlopen(urllib.request.Request(wh,data=json.dumps(embed).encode(),headers={"Content-Type":"application/json"}),timeout=10)
               except: pass
 
               # Slack
