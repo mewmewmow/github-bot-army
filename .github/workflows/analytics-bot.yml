@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: '0 8 * * *'
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/analytics-bot.yml
 
 permissions:
   contents: write
@@ -11,6 +14,8 @@ permissions:
 jobs:
   analytics:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,9 +23,8 @@ jobs:
           python-version: '3.12'
       - run: pip install PyGithub
       - name: Generate
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: python3 -c "
+        run: |
+          python3 -c "
 import os, json
 from github import Github
 g = Github(os.environ['GH_PAT'])
@@ -30,6 +34,9 @@ stars = sum(r.stargazers_count for r in user.get_repos() if not r.fork)
 os.makedirs('data', exist_ok=True)
 with open('data/analytics.json', 'w') as f:
     json.dump({'total': total, 'stars': stars}, f)
-print('Done')
+print('Done:', total, 'repos,', stars, 'stars')
 "
-      - run: git config user.name Bot && git config user.email bot@github-bot-army.dev && git add data/ && (git diff --staged --quiet || git commit -m "Analytics") && git push || echo no
+      - run: |
+          git config user.name Bot && git config user.email bot@github-bot-army.dev
+          git add data/ && (git diff --staged --quiet || git commit -m "Analytics") && git push || echo no
+
