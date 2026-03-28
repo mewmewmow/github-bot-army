@@ -1,0 +1,32 @@
+name: 📊 Analytics Bot
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  analytics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install PyGithub
+      - name: Analyze
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          python3 << 'PYTHON'
+import os
+from github import Github
+g = Github(os.environ['GH_PAT'])
+print("Logged in as:", g.get_user().login)
+PYTHON
+      - run: |
+          git config user.name "Bot"
+          git config user.email "bot@github-bot-army.dev"
