@@ -67,6 +67,14 @@ optional:
       2. Create webhook → Copy URL
     free: true
 
+  SLACK_WEBHOOK_URL:
+    description: "Slack webhook URL (100% FREE)"
+    how_to_get: |
+      1. Go to your Slack workspace → Apps → Incoming Webhooks
+      2. Add New Webhook → Choose channel → Copy URL
+    free: true
+    new: true
+
   OPENROUTER_API_KEY:
     description: "OpenRouter API key for AI features (free tier available)"
     how_to_get: "https://openrouter.ai"
