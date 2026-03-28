@@ -1,13 +1,10 @@
 name: 📊 Analytics Bot
-
 on:
   schedule:
     - cron: '0 8 * * *'
   workflow_dispatch:
-
 permissions:
   contents: write
-
 jobs:
   analytics:
     runs-on: ubuntu-latest
@@ -26,24 +23,15 @@ from github import Github
 
 g = Github(os.environ['GH_PAT'])
 user = g.get_user()
-repos = list(user.get_repos())
 
-print(f'Found {len(repos)} repos')
-
-stats = {'total': len(repos), 'stars': sum(r.stargazers_count for r in repos)}
-print(f'Total: {stats["total"]}, Stars: {stats["stars"]}')
+total = sum(1 for r in user.get_repos() if not r.fork)
+stars = sum(r.stargazers_count for r in user.get_repos() if not r.fork)
 
 os.makedirs('data', exist_ok=True)
 with open('data/analytics.json', 'w') as f:
-    json.dump(stats, f)
-
-print('✅ Done!')
+    json.dump({'total': total, 'stars': stars}, f)
+print(f'✅ {total} repos, {stars} stars')
 "
-
-      - name: 💾 Commit
-        run: |
-          git config user.name "Analytics Bot"
-          git config user.email "bot@github-bot-army.dev"
-          git add data/ 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "📊 Analytics" || true
-          git push || true
+      - run: |
+          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
+          git add data/ && git diff --staged --quiet && git commit -m "📊 Analytics" && git push || echo "No"
