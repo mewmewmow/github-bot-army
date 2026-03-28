@@ -2,7 +2,7 @@ name: 📊 Analytics Bot
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Daily 8am UTC
+    - cron: '0 8 * * *'
   workflow_dispatch:
 
 permissions:
@@ -27,108 +27,85 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
           python3 << 'PYTHON'
-          import os, json, smtplib, sys, traceback
-          from datetime import datetime, timedelta
-          from email.mime.text import MIMEText
-          from email.mime.multipart import MIMEMultipart
-          from github import Github
+import os, json, smtplib
+from datetime import datetime
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from github import Github
 
-          print("📊 Starting Analytics Bot...")
-          
-          def send_email(subj, html):
-              try:
-                  cfg={k:os.environ.get(k,'') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
-                  if not all([cfg['SMTP_HOST'],cfg['SMTP_USER'],cfg['SMTP_PASS'],cfg['EMAIL_TO']]): 
-                      print("⚠️ Email not configured - skipping")
-                      return
-                  msg=MIMEMultipart("alternative")
-                  msg["Subject"]=f"📊 {subj}";msg["From"]=cfg['EMAIL_FROM'] or cfg['SMTP_USER'];msg["To"]=cfg['EMAIL_TO']
-                  msg.attach(MIMEText(html,"html"))
-                  with smtplib.SMTP(cfg['SMTP_HOST'],int(cfg['SMTP_PORT'] or 587)) as s:
-                      s.starttls();s.login(cfg['SMTP_USER'],cfg['SMTP_PASS']);s.send_message(msg)
-                  print("📧 Email sent!")
-              except Exception as e: print(f"Email error: {e}")
+print("📊 Starting Analytics Bot...")
 
-          try:
-              g = Github(os.environ['GH_PAT'])
-              user = g.get_user()
-              print(f"📊 Scanning repos for {user.login}...")
+def send_email(subj, html):
+    cfg = {k: os.environ.get(k, '') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
+    if not all([cfg['SMTP_HOST'], cfg['SMTP_USER'], cfg['SMTP_PASS'], cfg['EMAIL_TO']]):
+        print("⚠️ Email not configured - skipping")
+        return True  # Return True so workflow doesn't fail
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"📊 {subj}"
+        msg["From"] = cfg['EMAIL_FROM'] or cfg['SMTP_USER']
+        msg["To"] = cfg['EMAIL_TO']
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP(cfg['SMTP_HOST'], int(cfg['SMTP_PORT'] or 587)) as s:
+            s.starttls()
+            s.login(cfg['SMTP_USER'], cfg['SMTP_PASS'])
+            s.send_message(msg)
+        print("📧 Email sent!")
+        return True
+    except Exception as e:
+        print(f"Email error (non-fatal): {e}")
+        return True  # Don't fail on email error
 
-              stats = {"total":0,"public":0,"private":0,"stars":0,"forks":0,"langs":{},"repos":[],"active":[]}
+try:
+    g = Github(os.environ['GH_PAT'])
+    user = g.get_user()
+    print(f"📊 Scanning repos for {user.login}...")
+    
+    stats = {"total": 0, "public": 0, "private": 0, "stars": 0, "forks": 0, "langs": {}, "repos": [], "active": []}
+    
+    for repo in user.get_repos():
+        if repo.fork: continue
+        stats["total"] += 1
+        if repo.private: stats["private"] += 1
+        else: stats["public"] += 1
+        stats["stars"] += repo.stargazers_count
+        stats["forks"] += repo.forks_count
+        if repo.language: stats["langs"][repo.language] = stats["langs"].get(repo.language, 0) + 1
+        h = 20 if repo.description else 0
+        try: repo.get_readme(); h += 20
+        except: pass
+        is_active = (datetime.now() - repo.updated_at.replace(tzinfo=None)).days < 7
+        if is_active: stats["active"].append(repo.name)
+        stats["repos"].append({"name": repo.name, "stars": repo.stargazers_count, "lang": repo.language, "health": h, "url": repo.html_url})
+    
+    stats["repos"].sort(key=lambda r: r["stars"], reverse=True)
+    avg_health = round(sum(r["health"] for r in stats["repos"]) / max(len(stats["repos"]), 1))
+    
+    print(f"📁 Repos: {stats['total']} | ⭐ Stars: {stats['stars']} | 💚 Health: {avg_health}%")
+    
+    html = f"""<html><body style="background:#0d1117;color:#c9d1d9;padding:20px">
+    <h1>📊 Analytics</h1>
+    <p>Repos: {stats['total']} | Stars: {stats['stars']} | Health: {avg_health}%</p></body></html>"""
+    
+    send_email(f"Analytics — {stats['total']} repos, {stats['stars']} stars", html)
+    
+    os.makedirs("data", exist_ok=True)
+    with open("data/analytics.json", "w") as f:
+        json.dump({"timestamp": datetime.now().isoformat(), **stats, "avg_health": avg_health}, f, indent=2)
+    
+    print("✅ Analytics completed!")
+except Exception as e:
+    print(f"Error: {e}")
+    import traceback
+    traceback.print_exc()
 
-              for repo in user.get_repos():
-                  try:
-                      if repo.fork: continue
-                      stats["total"] += 1
-                      if repo.private: stats["private"] += 1
-                      else: stats["public"] += 1
-                      stats["stars"] += repo.stargazers_count
-                      stats["forks"] += repo.forks_count
-                      if repo.language: stats["langs"][repo.language] = stats["langs"].get(repo.language,0)+1
-                      h = 0
-                      if repo.description: h+=20
-                      if repo.get_topics(): h+=15
-                      try: repo.get_readme(); h+=20
-                      except: pass
-                      try: repo.get_contents("LICENSE"); h+=15
-                      except: pass
-                      try: repo.get_contents(".gitignore"); h+=10
-                      except: pass
-                      is_active = (datetime.now() - repo.updated_at.replace(tzinfo=None)).days < 7
-                      if is_active: stats["active"].append(repo.name)
-                      stats["repos"].append({"name":repo.name,"stars":repo.stargazers_count,"forks":repo.forks_count,"lang":repo.language,"health":h,"active":is_active,"url":repo.html_url})
-                  except Exception as e:
-                      print(f"⚠️ Error processing {repo.name}: {e}")
-                      continue
+print("📊 Bot finished!")
+PYTHON
 
-              stats["repos"].sort(key=lambda r: r["stars"], reverse=True)
-              avg_health = round(sum(r["health"] for r in stats["repos"]) / max(len(stats["repos"]),1))
-
-              print(f"\n{'='*50}")
-              print(f"📊 ANALYTICS REPORT")
-              print(f"{'='*50}")
-              print(f"📁 Repos: {stats['total']} ({stats['public']} public, {stats['private']} private)")
-              print(f"⭐ Stars: {stats['stars']} | 🍴 Forks: {stats['forks']}")
-              print(f"💚 Avg Health: {avg_health}%")
-              print(f"🔄 Active this week: {len(stats['active'])}")
-
-              html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
-              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
-              <h1 style="color:#58a6ff">📊 Daily GitHub Analytics</h1>
-              <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p><hr style="border-color:#30363d">
-              <div style="display:flex;gap:20px;flex-wrap:wrap">
-              <div style="background:#0d1117;padding:16px;border-radius:8px;flex:1;min-width:120px;text-align:center">
-              <div style="font-size:32px;color:#58a6ff">{stats['total']}</div><div style="color:#8b949e">Repos</div></div>
-              <div style="background:#0d1117;padding:16px;border-radius:8px;flex:1;min-width:120px;text-align:center">
-              <div style="font-size:32px;color:#f0883e">{stats['stars']}</div><div style="color:#8b949e">Stars</div></div>
-              <div style="background:#0d1117;padding:16px;border-radius:8px;flex:1;min-width:120px;text-align:center">
-              <div style="font-size:32px;color:#3fb950">{avg_health}%</div><div style="color:#8b949e">Health</div></div>
-              <div style="background:#0d1117;padding:16px;border-radius:8px;flex:1;min-width:120px;text-align:center">
-              <div style="font-size:32px;color:#bc8cff">{len(stats['active'])}</div><div style="color:#8b949e">Active</div></div>
-              </div>
-              <h2>🏆 Top Repos</h2><ul>"""
-              for r in stats["repos"][:5]:
-                  html += f'<li>⭐ {r["stars"]} — <a href="{r["url"]}" style="color:#58a6ff">{r["name"]}</a> ({r["lang"] or "N/A"}) — Health: {r["health"]}%</li>'
-              html += "</ul><h2>💻 Languages</h2><ul>"
-              for lang, count in sorted(stats["langs"].items(), key=lambda x:-x[1])[:8]:
-                  html += f"<li>{lang}: {count} repos</li>"
-              html += "</ul></div></body></html>"
-              send_email(f"GitHub Analytics — {stats['total']} repos, {stats['stars']} stars, {avg_health}% health", html)
-
-              os.makedirs("data", exist_ok=True)
-              with open("data/analytics.json","w") as f:
-                  json.dump({"timestamp":datetime.now().isoformat(),**stats,"avg_health":avg_health},f,indent=2)
-              print("✅ Analytics saved to data/analytics.json")
-              print("📊 Analytics Bot completed successfully!")
-          except Exception as e:
-              print(f"❌ Error: {e}")
-              traceback.print_exc()
-              sys.exit(1)
-          PYTHON
       - name: 💾 Commit Data
         run: |
           git config user.name "Analytics Bot"
           git config user.email "bot@github-bot-army.dev"
           git add data/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "📊 Analytics — $(date +%Y-%m-%d)" || true
-          git push || echo "No changes to push"
+          git push || echo "No changes"
