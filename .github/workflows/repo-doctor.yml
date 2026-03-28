@@ -1,71 +1,12 @@
-name: 🔧 Repo Doctor
-
+name: repo-doctor
 on:
-  schedule:
-    - cron: '0 */4 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  issues: write
-
+  push:
+    paths:
+      - .github/workflows/repo-doctor.yml
 jobs:
-  diagnose-and-fix:
+  run:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: 📦 Install
-        run: pip install PyGithub
-
-      - name: 🔧 Run Repo Doctor
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          python3 -c "
-import os, json
-from github import Github
-from datetime import datetime
-
-g = Github(os.environ['GH_PAT'])
-user = g.get_user()
-
-print('🔧 Checking repos...')
-healthy = 0
-total = 0
-
-for repo in user.get_repos():
-    if repo.fork: continue
-    total += 1
-    h = 0
-    if repo.description: h += 20
-    try:
-        repo.get_readme()
-        h += 20
-    except:
-        pass
-    if h >= 40:
-        healthy += 1
-
-print(f'Total: {total}, Healthy: {healthy}')
-
-os.makedirs('data', exist_ok=True)
-with open('data/repo_doctor.json', 'w') as f:
-    json.dump({'total': total, 'healthy': healthy, 'timestamp': datetime.now().isoformat()}, f)
-
-print('✅ Done!')
-"
-
-      - name: 💾 Commit
-        run: |
-          git config user.name "Repo Doctor Bot"
-          git config user.email "bot@github-bot-army.dev"
-          git add data/ 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "🔧 Repo Doctor — $(date +%Y-%m-%d_%H%M)" || true
-          git push || true
+      - run: echo "Test"

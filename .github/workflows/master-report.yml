@@ -1,40 +1,12 @@
-name: 📬 Master Daily Report
+name: master-report
 on:
-  schedule:
-    - cron: '0 9 * * *'
-  workflow_dispatch:
-permissions:
-  contents: read
-  actions: read
+  push:
+    paths:
+      - .github/workflows/master-report.yml
 jobs:
-  daily-report:
+  run:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: pip install PyGithub
-      - name: 📬 Generate Report
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          python3 -c "
-import os, json
-from github import Github
-
-g = Github(os.environ['GH_PAT'])
-user = g.get_user()
-
-total = sum(1 for r in user.get_repos() if not r.fork)
-stars = sum(r.stargazers_count for r in user.get_repos() if not r.fork)
-
-print(f'Repos: {total}, Stars: {stars}')
-
-os.makedirs('data', exist_ok=True)
-with open('data/master_report.json', 'w') as f:
-    json.dump({'total': total, 'stars': stars}, f)
-print('✅ Done!')
-"
-      - run: |
-          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
-          git add data/ && git diff --staged --quiet && git commit -m "📬 Report" && git push || echo "No changes"
+      - run: echo "Test"

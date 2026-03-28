@@ -1,39 +1,12 @@
-name: 🔄 Update Bot
+name: update-bot
 on:
-  schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
-permissions:
-  contents: write
+  push:
+    paths:
+      - .github/workflows/update-bot.yml
 jobs:
-  update:
+  run:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: pip install PyGithub
-      - name: 🔄 Check Updates
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          python3 -c "
-import os, json
-from github import Github
-
-g = Github(os.environ['GH_PAT'])
-user = g.get_user()
-
-updates = []
-for repo in user.get_repos():
-    if repo.fork: continue
-    updates.append({'name': repo.name, 'updated': str(repo.updated_at)[:10]})
-
-os.makedirs('data', exist_ok=True)
-with open('data/update_bot.json', 'w') as f:
-    json.dump({'checked': len(updates)}, f)
-print(f'✅ Checked {len(updates)} repos')
-"
-      - run: |
-          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
-          git add data/ && git diff --staged --quiet && git commit -m "🔄 Update" && git push || echo "No"
+      - run: echo "Test"

@@ -1,47 +1,12 @@
-name: 🛡️ Security Sentinel
+name: security-sentinel
 on:
-  schedule:
-    - cron: '0 6 * * *'
-  workflow_dispatch:
-permissions:
-  contents: read
+  push:
+    paths:
+      - .github/workflows/security-sentinel.yml
 jobs:
-  scan:
+  run:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: pip install PyGithub
-      - name: 🔍 Security Scan
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          python3 -c "
-import os, json
-from github import Github
-from datetime import datetime
-
-g = Github(os.environ['GH_PAT'])
-user = g.get_user()
-
-alerts = []
-for repo in user.get_repos():
-    if repo.fork: continue
-    try:
-        for f in ['.env', 'config.py']:
-            try:
-                repo.get_contents(f)
-            except:
-                pass
-    except:
-        pass
-
-os.makedirs('data', exist_ok=True)
-with open('data/security_sentinel.json', 'w') as f:
-    json.dump({'alerts': len(alerts), 'timestamp': datetime.now().isoformat()}, f)
-print(f'✅ Scanned - {len(alerts)} alerts')
-"
-      - run: |
-          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
-          git add data/ && git diff --staged --quiet && git commit -m "🛡️ Security" && git push || echo "No"
+      - run: echo "Test"

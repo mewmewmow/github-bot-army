@@ -1,36 +1,12 @@
-name: 🧠 Bot Coordinator
+name: bot-coordinator
 on:
-  schedule:
-    - cron: '0 */2 * * *'
-  workflow_dispatch:
-permissions:
-  contents: write
+  push:
+    paths:
+      - .github/workflows/bot-coordinator.yml
 jobs:
-  coordinate:
+  run:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: pip install PyGithub
-      - name: 🧠 Coordinate Bots
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          python3 -c "
-import os, json
-from github import Github
-
-g = Github(os.environ['GH_PAT'])
-user = g.get_user()
-
-bots = [r.name for r in user.get_repos() if 'bot' in r.name.lower()]
-
-os.makedirs('data', exist_ok=True)
-with open('data/bot_coordinator.json', 'w') as f:
-    json.dump({'bots': len(bots)}, f)
-print(f'✅ Found {len(bots)} bots')
-"
-      - run: |
-          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
-          git add data/ && git diff --staged --quiet && git commit -m "🧠 Coordinator" && git push || echo "No"
+      - run: echo "Test"

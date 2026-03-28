@@ -1,51 +1,23 @@
 name: 🔑 API Key Hunter
 
 on:
-  schedule:
-    - cron: '0 */3 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+  push:
+    paths:
+      - .github/workflows/api-key-hunter.yml
 
 jobs:
   hunt:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: pip install requests
-      - name: 🔑 Hunt APIs
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          python3 << 'PYTHON'
-import os, json, requests
-from github import Github
-
-g = Github(os.environ['GH_PAT'])
-user = g.get_user()
-
-found = []
-for repo in user.get_repos():
-    if repo.fork: continue
-    try:
-        for f in ['api.js', 'config.py', 'env.js', 'settings.py']:
-            try:
-                content = repo.get_contents(f).decoded_content.decode()
-                if 'api' in content.lower() and ('key' in content.lower() or 'token' in content.lower() or 'secret' in content.lower()):
-                    found.append({'repo': repo.name, 'file': f})
-            except: pass
-    except: pass
-
-print(f"Found {len(found)} potential API keys")
-os.makedirs('data', exist_ok=True)
-with open('data/api_hunt.json', 'w') as f:
-    json.dump({'found': found}, f)
-print('Done')
-PYTHON
+      - run: pip install PyGithub
       - run: |
-          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
-          git add data/ && git diff --staged --quiet || git commit -m "🔑 API Hunt" && git push || echo "No changes"
+          python3 -c "
+from github import Github
+import os
+g = Github(os.environ['GH_PAT'])
+print('User:', g.get_user().login)
+"
+      - run: echo "Done"
+
