@@ -1,4 +1,4 @@
-name: Bot Coordinator (Brain)
+name: 🧠 Bot Coordinator
 on:
   schedule:
     - cron: '0 */2 * * *'
