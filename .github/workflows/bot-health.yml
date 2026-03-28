@@ -29,6 +29,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python3 << 'PYTHON'
           import os, json, smtplib, urllib.request
@@ -68,6 +69,18 @@ jobs:
                       req = urllib.request.Request(wh,data=data,headers={"Content-Type":"application/json"})
                       urllib.request.urlopen(req,timeout=10)
                       print("💬 Discord sent")
+              except: pass
+              # Slack
+              try:
+                  sw = os.environ.get('SLACK_WEBHOOK_URL','')
+                  if sw:
+                      import re
+                      clean_body = re.sub(r'<[^>]+>', '', body)[:3000]
+                      payload = {"text": f"⚙️ *{subject}*", "blocks": [{"type": "header", "text": {"type": "plain_text", "text": f"⚙️ {subject}"}}, {"type": "section", "text": {"type": "mrkdwn", "text": clean_body}}]}
+                      data = json.dumps(payload).encode()
+                      req = urllib.request.Request(sw,data=data,headers={"Content-Type":"application/json"})
+                      urllib.request.urlopen(req,timeout=10)
+                      print("📎 Slack sent")
               except: pass
 
           g = Github(os.environ['GH_PAT'])
