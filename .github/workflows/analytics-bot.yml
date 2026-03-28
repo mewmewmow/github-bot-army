@@ -1,15 +1,9 @@
 name: 📊 Analytics Bot
 
 on:
-  schedule:
-    - cron: '0 8 * * *'
-  workflow_dispatch:
   push:
     paths:
       - .github/workflows/analytics-bot.yml
-
-permissions:
-  contents: write
 
 jobs:
   analytics:
@@ -17,26 +11,13 @@ jobs:
     env:
       GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - run: pip install PyGithub
-      - name: Generate
-        run: |
-          python3 -c "
-import os, json
-from github import Github
-g = Github(os.environ['GH_PAT'])
-user = g.get_user()
-total = sum(1 for r in user.get_repos() if not r.fork)
-stars = sum(r.stargazers_count for r in user.get_repos() if not r.fork)
-os.makedirs('data', exist_ok=True)
-with open('data/analytics.json', 'w') as f:
-    json.dump({'total': total, 'stars': stars}, f)
-print('Done:', total, 'repos,', stars, 'stars')
-"
       - run: |
-          git config user.name Bot && git config user.email bot@github-bot-army.dev
-          git add data/ && (git diff --staged --quiet || git commit -m "Analytics") && git push || echo no
+          python3 -c "
+from github import Github
+import os
+g = Github(os.environ['GH_PAT'])
+print('User:', g.get_user().login)
+"
+      - run: echo "Success!"
 
