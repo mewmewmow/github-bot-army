@@ -1,0 +1,16 @@
+name: Test GH Auth
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          python3 -c "
+import os
+print('GH_PAT:', 'SET' if os.environ.get('GH_PAT') else 'NOT SET')
+from github import Github
+g = Github(os.environ.get('GH_PAT', 'fake'))
+u = g.get_user()
+print('User:', u.login)
+"
