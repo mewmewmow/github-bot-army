@@ -44,6 +44,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           APP_TYPE: ${{ github.event.inputs.app_type }}
         run: |
           python3 << 'PYTHON'
@@ -69,6 +70,18 @@ jobs:
                       url=f"https://api.telegram.org/bot{t}/sendMessage"
                       data=json.dumps({"chat_id":c,"text":f"📱 {subject}\n\nCheck email for download links!","parse_mode":"Markdown"}).encode()
                       req=urllib.request.Request(url,data=data,headers={"Content-Type":"application/json"})
+                      urllib.request.urlopen(req,timeout=10)
+              except: pass
+
+              # Slack
+              try:
+                  import re
+                  sw=os.environ.get('SLACK_WEBHOOK_URL','')
+                  if sw:
+                      clean_body=re.sub(r'<[^>]+>', '', html)[:3000]
+                      payload={"text": f"📱 *{subject}*", "blocks":[{"type":"header","text":{"type":"plain_text","text":f"📱 {subject}"}},{"type":"section","text":{"type":"mrkdwn","text":clean_body}}]}
+                      data=json.dumps(payload).encode()
+                      req=urllib.request.Request(sw,data=data,headers={"Content-Type":"application/json"})
                       urllib.request.urlopen(req,timeout=10)
               except: pass
 
