@@ -27,9 +27,6 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           python3 << 'PYTHON'
@@ -58,8 +55,6 @@ jobs:
               except Exception as e: channels["email"] = f"❌ {e}"
               
               # TELEGRAM
-              token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-              chat_id = os.environ.get('TELEGRAM_CHAT_ID', '')
               if token and chat_id:
                   try:
                       text = f"🤖 *{subject}*\n\n"
@@ -72,7 +67,6 @@ jobs:
                   except Exception as e: channels["telegram"] = f"❌ {e}"
               
               # DISCORD
-              webhook = os.environ.get('DISCORD_WEBHOOK_URL', '')
               if webhook:
                   try:
                       embed = {"embeds":[{"title":f"🤖 {subject}","description":re.sub(r'<[^>]+>','',html_body)[:2000],"color":3447003,"timestamp":datetime.utcnow().isoformat(),"footer":{"text":"GitHub Bot Army"}}]}
