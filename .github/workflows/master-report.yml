@@ -1,14 +1,11 @@
 name: 📬 Master Daily Report
-
 on:
   schedule:
     - cron: '0 9 * * *'
   workflow_dispatch:
-
 permissions:
   contents: read
   actions: read
-
 jobs:
   daily-report:
     runs-on: ubuntu-latest
@@ -17,8 +14,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install PyGithub
-
-      - name: 📬 Generate Master Report
+      - name: 📬 Generate Report
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
@@ -29,28 +25,16 @@ from github import Github
 g = Github(os.environ['GH_PAT'])
 user = g.get_user()
 
-total = 0
-stars = 0
-forks = 0
-for r in user.get_repos():
-    if r.fork: continue
-    total += 1
-    stars += r.stargazers_count
-    forks += r.forks_count
+total = sum(1 for r in user.get_repos() if not r.fork)
+stars = sum(r.stargazers_count for r in user.get_repos() if not r.fork)
 
-print(f'📊 Total: {total} repos, ⭐ {stars} stars, 🍴 {forks} forks')
+print(f'Repos: {total}, Stars: {stars}')
 
 os.makedirs('data', exist_ok=True)
 with open('data/master_report.json', 'w') as f:
-    json.dump({'total': total, 'stars': stars, 'forks': forks}, f)
-
-print('✅ Report generated!')
+    json.dump({'total': total, 'stars': stars}, f)
+print('✅ Done!')
 "
-
-      - name: 💾 Commit
-        run: |
-          git config user.name "Bot"
-          git config user.email "bot@github-bot-army.dev"
-          git add data/ 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "📬 Report" || true
-          git push || true
+      - run: |
+          git config user.name "Bot" && git config user.email "bot@github-bot-army.dev"
+          git add data/ && git diff --staged --quiet && git commit -m "📬 Report" && git push || echo "No changes"
