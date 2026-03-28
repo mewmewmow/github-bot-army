@@ -19,93 +19,31 @@ jobs:
       - name: 📊 Generate Analytics
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
-          python3 << 'PYTHON'
-import os, json, smtplib
-from datetime import datetime
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+          python3 -c "
+import os, json
 from github import Github
 
-print("📊 Starting Analytics Bot...")
+g = Github(os.environ['GH_PAT'])
+user = g.get_user()
+repos = list(user.get_repos())
 
-def send_email(subj, html):
-    cfg = {k: os.environ.get(k, '') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
-    if not all([cfg['SMTP_HOST'], cfg['SMTP_USER'], cfg['SMTP_PASS'], cfg['EMAIL_TO']]):
-        print("⚠️ Email not configured - skipping")
-        return True  # Return True so workflow doesn't fail
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"📊 {subj}"
-        msg["From"] = cfg['EMAIL_FROM'] or cfg['SMTP_USER']
-        msg["To"] = cfg['EMAIL_TO']
-        msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP(cfg['SMTP_HOST'], int(cfg['SMTP_PORT'] or 587)) as s:
-            s.starttls()
-            s.login(cfg['SMTP_USER'], cfg['SMTP_PASS'])
-            s.send_message(msg)
-        print("📧 Email sent!")
-        return True
-    except Exception as e:
-        print(f"Email error (non-fatal): {e}")
-        return True  # Don't fail on email error
+print(f'Found {len(repos)} repos')
 
-try:
-    g = Github(os.environ['GH_PAT'])
-    user = g.get_user()
-    print(f"📊 Scanning repos for {user.login}...")
-    
-    stats = {"total": 0, "public": 0, "private": 0, "stars": 0, "forks": 0, "langs": {}, "repos": [], "active": []}
-    
-    for repo in user.get_repos():
-        if repo.fork: continue
-        stats["total"] += 1
-        if repo.private: stats["private"] += 1
-        else: stats["public"] += 1
-        stats["stars"] += repo.stargazers_count
-        stats["forks"] += repo.forks_count
-        if repo.language: stats["langs"][repo.language] = stats["langs"].get(repo.language, 0) + 1
-        h = 20 if repo.description else 0
-        try: repo.get_readme(); h += 20
-        except: pass
-        is_active = (datetime.now() - repo.updated_at.replace(tzinfo=None)).days < 7
-        if is_active: stats["active"].append(repo.name)
-        stats["repos"].append({"name": repo.name, "stars": repo.stargazers_count, "lang": repo.language, "health": h, "url": repo.html_url})
-    
-    stats["repos"].sort(key=lambda r: r["stars"], reverse=True)
-    avg_health = round(sum(r["health"] for r in stats["repos"]) / max(len(stats["repos"]), 1))
-    
-    print(f"📁 Repos: {stats['total']} | ⭐ Stars: {stats['stars']} | 💚 Health: {avg_health}%")
-    
-    html = f"""<html><body style="background:#0d1117;color:#c9d1d9;padding:20px">
-    <h1>📊 Analytics</h1>
-    <p>Repos: {stats['total']} | Stars: {stats['stars']} | Health: {avg_health}%</p></body></html>"""
-    
-    send_email(f"Analytics — {stats['total']} repos, {stats['stars']} stars", html)
-    
-    os.makedirs("data", exist_ok=True)
-    with open("data/analytics.json", "w") as f:
-        json.dump({"timestamp": datetime.now().isoformat(), **stats, "avg_health": avg_health}, f, indent=2)
-    
-    print("✅ Analytics completed!")
-except Exception as e:
-    print(f"Error: {e}")
-    import traceback
-    traceback.print_exc()
+stats = {'total': len(repos), 'stars': sum(r.stargazers_count for r in repos)}
+print(f'Total: {stats["total"]}, Stars: {stats["stars"]}')
 
-print("📊 Bot finished!")
-PYTHON
+os.makedirs('data', exist_ok=True)
+with open('data/analytics.json', 'w') as f:
+    json.dump(stats, f)
 
-      - name: 💾 Commit Data
+print('✅ Done!')
+"
+
+      - name: 💾 Commit
         run: |
           git config user.name "Analytics Bot"
           git config user.email "bot@github-bot-army.dev"
           git add data/ 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "📊 Analytics — $(date +%Y-%m-%d)" || true
-          git push || echo "No changes"
+          git diff --staged --quiet || git commit -m "📊 Analytics" || true
+          git push || true
