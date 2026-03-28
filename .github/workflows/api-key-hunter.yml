@@ -1,23 +1,12 @@
-name: 🔑 API Key Hunter
-
+name: api-key-hunter
 on:
   push:
     paths:
       - .github/workflows/api-key-hunter.yml
-
 jobs:
-  hunt:
+  run:
     runs-on: ubuntu-latest
     env:
       GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - run: pip install PyGithub
-      - run: |
-          python3 -c "
-from github import Github
-import os
-g = Github(os.environ['GH_PAT'])
-print('User:', g.get_user().login)
-"
-      - run: echo "Done"
-
+      - run: echo "Test for api-key-hunter"

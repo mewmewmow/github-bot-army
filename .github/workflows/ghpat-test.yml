@@ -1,19 +1,12 @@
-name: GH_PAT Test
+name: ghpat-test
 on:
   push:
-    branches:
-      - main
+    paths:
+      - .github/workflows/ghpat-test.yml
 jobs:
-  test:
+  run:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - run: echo "Testing GH_PAT"
-      - name: Use GH_PAT
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
-        run: |
-          python3 -c "
-import os
-print('GH_PAT is set:', bool(os.environ.get('GH_PAT')))
-print('Length:', len(os.environ.get('GH_PAT', '')))
-"
+      - run: echo "Test for ghpat-test"

@@ -1,23 +1,12 @@
-name: 📊 Analytics Bot
-
+name: analytics-bot
 on:
   push:
     paths:
       - .github/workflows/analytics-bot.yml
-
 jobs:
-  analytics:
+  run:
     runs-on: ubuntu-latest
     env:
       GH_PAT: ${{ secrets.GH_PAT }}
     steps:
-      - run: pip install PyGithub
-      - run: |
-          python3 -c "
-from github import Github
-import os
-g = Github(os.environ['GH_PAT'])
-print('User:', g.get_user().login)
-"
-      - run: echo "Success!"
-
+      - run: echo "Test for analytics-bot"
