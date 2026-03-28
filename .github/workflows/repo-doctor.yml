@@ -2,7 +2,7 @@ name: 🔧 Repo Doctor
 
 on:
   schedule:
-    - cron: '0 */4 * * *'  # Every 4 hours
+    - cron: '0 */4 * * *'
   workflow_dispatch:
 
 permissions:
@@ -27,164 +27,40 @@ jobs:
       - name: 🔧 Run Repo Doctor
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
-          python3 << 'PYTHON'
-          import sys, os, smtplib, json, base64
-          from datetime import datetime
-          from email.mime.text import MIMEText
-          from email.mime.multipart import MIMEMultipart
-          from github import Github
+          python3 -c "
+import os, json
+from github import Github
+from datetime import datetime
 
-          # --- Email function ---
-          def send_email(subject, html_body):
-              try:
-                  cfg = {k: os.environ.get(k, '') for k in ['SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','EMAIL_FROM','EMAIL_TO']}
-                  if not all([cfg['SMTP_HOST'], cfg['SMTP_USER'], cfg['SMTP_PASS'], cfg['EMAIL_TO']]):
-                      print("⚠️ Email not configured"); return
-                  msg = MIMEMultipart("alternative")
-                  msg["Subject"] = f"🤖 {subject}"
-                  msg["From"] = cfg['EMAIL_FROM'] or cfg['SMTP_USER']
-                  msg["To"] = cfg['EMAIL_TO']
-                  msg.attach(MIMEText(html_body, "html"))
-                  with smtplib.SMTP(cfg['SMTP_HOST'], int(cfg['SMTP_PORT'] or 587)) as s:
-                      s.starttls(); s.login(cfg['SMTP_USER'], cfg['SMTP_PASS']); s.send_message(msg)
-                  print("📧 Email sent!")
-              except Exception as e: print(f"❌ Email error: {e}")
+g = Github(os.environ['GH_PAT'])
+user = g.get_user()
 
-          token = os.environ['GH_PAT']
-          g = Github(token)
-          user = g.get_user()
+print('🔧 Checking repos...')
+healthy = 0
+total = 0
 
-          print(f"🔧 Repo Doctor — Scanning {user.login}'s repos...")
+for repo in user.get_repos():
+    if repo.fork: continue
+    total += 1
+    h = 0
+    if repo.description: h += 20
+    try:
+        repo.get_readme()
+        h += 20
+    except:
+        pass
+    if h >= 40:
+        healthy += 1
 
-          issues_found = []
-          fixes_applied = []
-          repos_scanned = 0
-          repos_healthy = 0
+print(f'Total: {total}, Healthy: {healthy}')
 
-          for repo in user.get_repos():
-              if repo.fork: continue
-              repos_scanned += 1
-              repo_issues = []
-              repo_fixes = []
+os.makedirs('data', exist_ok=True)
+with open('data/repo_doctor.json', 'w') as f:
+    json.dump({'total': total, 'healthy': healthy, 'timestamp': datetime.now().isoformat()}, f)
 
-              # Check description
-              if not repo.description:
-                  repo_issues.append("No description")
-                  try:
-                      desc = repo.name.replace('-',' ').replace('_',' ').title() + f" — {repo.language or 'Project'}"
-                      repo.edit(description=desc)
-                      repo_fixes.append(f"Added description: {desc}")
-                  except: pass
-
-              # Check topics
-              if not repo.get_topics():
-                  repo_issues.append("No topics")
-                  try:
-                      topics = []
-                      if repo.language: topics.append(repo.language.lower())
-                      if topics: repo.replace_topics(topics + ['project'])
-                      repo_fixes.append(f"Added topics: {topics}")
-                  except: pass
-
-              # Check README
-              try: repo.get_readme()
-              except:
-                  repo_issues.append("No README")
-                  try:
-                      readme = f"# {repo.name}\n\n{repo.description or 'A project by ' + user.login}\n"
-                      repo.create_file("README.md", "docs: add README", readme)
-                      repo_fixes.append("Added README.md")
-                  except: pass
-
-              # Check LICENSE
-              try: repo.get_contents("LICENSE")
-              except:
-                  repo_issues.append("No LICENSE")
-                  try:
-                      lic = f"MIT License\n\nCopyright (c) {datetime.now().year} {user.login}\n\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction..."
-                      repo.create_file("LICENSE", "chore: add MIT License", lic)
-                      repo_fixes.append("Added MIT LICENSE")
-                  except: pass
-
-              # Check .gitignore
-              try: repo.get_contents(".gitignore")
-              except:
-                  if repo.language:
-                      repo_issues.append("No .gitignore")
-                      try:
-                          gi = "node_modules/\n.env*\n!.env.example\n.DS_Store\ndist/\nbuild/\n__pycache__/\n*.pyc\n"
-                          repo.create_file(".gitignore", "chore: add .gitignore", gi)
-                          repo_fixes.append("Added .gitignore")
-                      except: pass
-
-              # Check stale issues (60+ days)
-              for issue in repo.get_issues(state='open'):
-                  if (datetime.now() - issue.updated_at.replace(tzinfo=None)).days > 60:
-                      repo_issues.append(f"Stale issue #{issue.number}: {issue.title}")
-
-              if repo_issues:
-                  issues_found.append({"repo": repo.name, "issues": repo_issues})
-              else:
-                  repos_healthy += 1
-
-              if repo_fixes:
-                  fixes_applied.append({"repo": repo.name, "fixes": repo_fixes})
-
-          # Print report
-          print(f"\n{'='*50}")
-          print(f"🔧 REPO DOCTOR REPORT")
-          print(f"{'='*50}")
-          print(f"📊 Repos scanned: {repos_scanned}")
-          print(f"✅ Healthy: {repos_healthy}")
-          print(f"⚠️ Issues found: {len(issues_found)}")
-          print(f"🔧 Fixes applied: {sum(len(f['fixes']) for f in fixes_applied)}")
-
-          for item in issues_found:
-              print(f"\n🔴 {item['repo']}:")
-              for i in item['issues']: print(f"  ⚠️ {i}")
-
-          for item in fixes_applied:
-              print(f"\n🔧 {item['repo']}:")
-              for f in item['fixes']: print(f"  ✅ {f}")
-
-          # Send email
-          if issues_found or fixes_applied:
-              html = f"""<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;background:#0d1117;color:#c9d1d9">
-              <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px">
-              <h1 style="color:#58a6ff">🔧 Repo Doctor Report</h1>
-              <p>{datetime.now().strftime('%Y-%m-%d %H:%M UTC')}</p>
-              <hr style="border-color:#30363d">
-              <p>📊 <b>{repos_scanned}</b> repos scanned | ✅ <b>{repos_healthy}</b> healthy | ⚠️ <b>{len(issues_found)}</b> with issues</p>"""
-
-              if fixes_applied:
-                  html += "<h2>🔧 Fixes Applied</h2>"
-                  for item in fixes_applied:
-                      html += f"<p><b>{item['repo']}:</b></p><ul>"
-                      for f in item['fixes']: html += f"<li>✅ {f}</li>"
-                      html += "</ul>"
-
-              if issues_found:
-                  html += "<h2>⚠️ Issues Found</h2>"
-                  for item in issues_found:
-                      html += f"<p><b>{item['repo']}:</b></p><ul>"
-                      for i in item['issues']: html += f"<li>{i}</li>"
-                      html += "</ul>"
-
-              html += "</div></body></html>"
-              send_email(f"Repo Doctor — {len(fixes_applied)} repos fixed", html)
-
-          # Save report
-          os.makedirs("data", exist_ok=True)
-          with open("data/repo_doctor.json", "w") as f:
-              json.dump({"timestamp": datetime.now().isoformat(), "scanned": repos_scanned, "healthy": repos_healthy, "issues": issues_found, "fixes": fixes_applied}, f, indent=2)
-          PYTHON
+print('✅ Done!')
+"
 
       - name: 💾 Commit
         run: |
