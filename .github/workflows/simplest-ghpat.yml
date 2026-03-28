@@ -1,0 +1,14 @@
+name: Simplest GH_PAT
+on:
+  push:
+    paths:
+    - .github/workflows/simplest-ghpat.yml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
+    steps:
+      - run: |
+          echo "GH_PAT starts with: ${GH_PAT:0:10}"
+          echo "Length: ${#GH_PAT}"
